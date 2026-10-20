@@ -191,6 +191,7 @@
   .caldays-badge.warn{background:#FFF3CD; color:#8A6D00;}
   .caldays-badge.expired{background:var(--err-bg); color:var(--err-text);}
   .caldays-badge.ok{background:#E6F6EE; color:var(--ok);}
+  .caldays-num.expired{color:var(--err-text); font-weight:700; font-size:calc(12px * var(--text-scale, 1));}
   [data-theme="dark"] .caldays-badge.warn{background:#4A3C10; color:#F2CC66;}
   [data-theme="dark"] .caldays-badge.ok{background:#123B2A; color:var(--ok);}
 
@@ -3024,7 +3025,7 @@ function calDaysLeftCellHTML(val){
 // two separate count columns — "-" when everything's fine.
 function calDaysGroupBadgeHTML(row){
   const chips = [];
-  if(row.calExpired) chips.push(`<span class="caldays-badge expired">⛔ หมดอายุ ${row.calExpired} ชิ้น</span>`);
+  if(row.calExpired) chips.push(`<span class="caldays-num expired">${row.calExpired}</span>`);
   if(row.calWarn) chips.push(`<span class="caldays-badge warn">⚠️ ใกล้ครบกำหนด ${row.calWarn} ชิ้น</span>`);
   if(!chips.length) return `<span class="caldays-ok">-</span>`;
   return chips.join('<br>');
@@ -3068,7 +3069,7 @@ function buildAgeCalibTable(category, records, withImages, splitPhotoCol, forceN
         <th rowspan="2" class="colUsageDays">จำนวนวันใช้งาน<br>เฉลี่ย/ปี</th>
         <th colspan="4">จำนวนเครื่องมือตามเกณฑ์อายุ</th>
         <th colspan="3">สถานะสอบเทียบ</th>
-        <th rowspan="2" class="colCalDays">วันคงเหลือ<br>สอบเทียบครั้งถัดไป</th>
+        <th rowspan="2" class="colCalDays">จำนวนเครื่องมือ<br>ที่ต้องสอบเทียบ</th>
         <th rowspan="2" class="colTotal">รวม</th>
       </tr>
       <tr>
