@@ -192,6 +192,12 @@
   .caldays-badge.expired{background:var(--err-bg); color:var(--err-text);}
   .caldays-badge.ok{background:#E6F6EE; color:var(--ok);}
   .caldays-num.expired{color:var(--err-text); font-weight:700; font-size:calc(12px * var(--text-scale, 1));}
+  /* กราฟ/ตารางหลังแผนที่ — ซ่อนไว้จนกว่าจะเลือกหน่วยงาน หรือกดปุ่มแสดง */
+  .post-map-hidden{display:none !important;}
+  #postMapToggleRow{text-align:center; margin:-6px 0 18px;}
+  .post-map-toggle-btn{display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:999px; border:1px solid var(--soft-border); background:var(--soft-tint); color:var(--soft-accent); font-family:inherit; font-size:calc(12px * var(--text-scale, 1)); font-weight:600; cursor:pointer;}
+  .post-map-toggle-btn:hover{background:var(--soft-tint-strong);}
+  @media print{#postMapToggleRow{display:none !important;}}
   [data-theme="dark"] .caldays-badge.warn{background:#4A3C10; color:#F2CC66;}
   [data-theme="dark"] .caldays-badge.ok{background:#123B2A; color:var(--ok);}
 
@@ -2490,6 +2496,10 @@
 <div id="equipCatalogResizer" title="ลากเพื่อปรับความกว้าง — ขยายเพื่อดูแผนที่ให้ชัดขึ้น"></div>
 <div id="equipCatalog"></div>
 </div>
+    </div>
+
+    <div id="postMapToggleRow">
+      <button type="button" id="postMapToggleBtn" class="post-map-toggle-btn" aria-expanded="false">▼ แสดงกราฟและตารางอื่นๆ</button>
     </div>
 
     <div class="panel" id="panelAgeBar" style="margin-bottom:18px;">
@@ -7052,10 +7062,40 @@ function renderSummarySection(rows){
   byItemEl.innerHTML = byItemHtml || `<div class="empty-state">ไม่พบข้อมูล</div>`;
 }
 
+// กราฟและตารางหลังแผนที่ถูกซ่อนไว้ — แสดงเมื่อเลือกตัวกรองหน่วยงาน หรือเมื่อกดปุ่มใต้แผนที่
+let postMapManualOpen = false;
+function applyPostMapVisibility(){
+  const dash = document.getElementById('dashboardContent');
+  const mapPanel = document.getElementById('panelMapSection');
+  const row = document.getElementById('postMapToggleRow');
+  const btn = document.getElementById('postMapToggleBtn');
+  if(!dash || !mapPanel) return;
+  const hasUnit = !!(filters.unit && filters.unit.length);
+  const show = hasUnit || postMapManualOpen;
+  let afterMap = false;
+  Array.from(dash.children).forEach(el=>{
+    if(el === mapPanel){ afterMap = true; return; }
+    if(!afterMap || el === row) return;
+    el.classList.toggle('post-map-hidden', !show);
+  });
+  if(row){
+    row.style.display = hasUnit ? 'none' : '';
+    if(btn){
+      btn.textContent = postMapManualOpen ? '▲ ซ่อนกราฟและตารางอื่นๆ' : '▼ แสดงกราฟและตารางอื่นๆ';
+      btn.setAttribute('aria-expanded', String(show));
+    }
+  }
+}
+(function(){
+  const btn = document.getElementById('postMapToggleBtn');
+  if(btn) btn.addEventListener('click', ()=>{ postMapManualOpen = !postMapManualOpen; refreshAll(); });
+})();
+
 function refreshAll(){
   const hasData = currentData.length > 0;
   document.getElementById('emptyStateMain').style.display = hasData ? 'none' : 'block';
   document.getElementById('dashboardContent').style.display = hasData ? '' : 'none';
+  applyPostMapVisibility();
   syncMapFromDashboard();
   if(!hasData) return;
   const filtered = applyFilters(currentData);
