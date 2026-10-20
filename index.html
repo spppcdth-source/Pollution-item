@@ -7476,6 +7476,7 @@ async function handleFile(file){
       return;
     }
     applyLoadedRows(rows, file.name);
+    { const _a=document.getElementById('asOf'); if(_a) _a.textContent='ข้อมูลจากไฟล์ที่อัปโหลด (ไม่ได้ซิงก์ Google Sheets)'; }
     dataSource = 'file'; // สลับไปใช้ไฟล์ที่อัปโหลดเอง หยุดให้ข้อมูลจาก Google Sheet เขียนทับชั่วคราว
     setSheetStatus('error', '⏸️ หยุดซิงค์ Google Sheet ชั่วคราว', 'กำลังแสดงข้อมูลจากไฟล์ที่อัปโหลด · กดปุ่ม ✕ ที่ไฟล์เพื่อกลับไปใช้ Google Sheet');
   }catch(err){
@@ -7605,6 +7606,13 @@ async function fetchSheetCsv(){
   throw lastErr || new Error('ไม่สามารถเชื่อมต่อได้');
 }
 
+function setAsOfSync(d){
+  const el = document.getElementById('asOf');
+  if(!el) return;
+  el.textContent = 'ข้อมูล ณ วันที่ ' + d.toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'})
+    + ' เวลา ' + d.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) + ' น. (ซิงก์ Google Sheets)';
+}
+
 async function loadFromGoogleSheet(isAutoRefresh){
   if(dataSource !== 'sheet') return; // กำลังใช้ไฟล์ที่อัปโหลดเองอยู่ ไม่ไปทับข้อมูล
   setSheetStatus('loading', isAutoRefresh ? 'กำลังซิงค์ข้อมูลอัตโนมัติ...' : 'กำลังเชื่อมต่อ Google Sheet...', '');
@@ -7625,10 +7633,12 @@ async function loadFromGoogleSheet(isAutoRefresh){
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    setAsOfSync(now);
     setSheetStatus('ok', '🟢 เชื่อมต่อ Google Sheet แล้ว', `ซิงค์ล่าสุด ${timeStr} น. · ${rows.length.toLocaleString('th-TH')} รายการ`);
   }catch(err){
     setSheetStatus('error', '⚠️ เชื่อมต่อ Google Sheet ไม่สำเร็จ', 'สาเหตุ: ' + err.message + ' · กดปุ่ม 🔄 เพื่อลองใหม่');
     console.error('Google Sheet sync error:', err);
+    { const _a=document.getElementById('asOf'); if(_a && _a.textContent.indexOf('—')!==-1) _a.textContent='ข้อมูล ณ วันที่ — (ซิงก์ Google Sheets ไม่สำเร็จ)'; }
   }
 }
 
@@ -7737,16 +7747,10 @@ function initGsheetSync(){
 
 /* ======================= INIT ======================= */
 function init(){
-  // วันที่ + เวลา อัปเดตทุกวินาที (เวลาเครื่องผู้ใช้)
+  // pill "ข้อมูล ณ วันที่ ..." แสดงวัน-เวลาที่ซิงก์ข้อมูลกับ Google Sheets ล่าสุด (ตั้งค่าใน setAsOfSync)
   const asOfEl = document.getElementById('asOf');
   asOfEl.style.fontVariantNumeric = 'tabular-nums';
-  const updateAsOf = ()=>{
-    const now = new Date();
-    asOfEl.textContent = 'ข้อมูล ณ วันที่ ' + now.toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'})
-      + ' เวลา ' + now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) + ' น.';
-  };
-  updateAsOf();
-  setInterval(updateAsOf, 1000);
+  asOfEl.textContent = 'ข้อมูล ณ วันที่ — (กำลังซิงค์ Google Sheets…)';
   initChartSwitchers();
   initToolPanelTabs();
   initTopNControls();
