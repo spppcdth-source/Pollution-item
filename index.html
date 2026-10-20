@@ -7476,7 +7476,7 @@ async function handleFile(file){
       return;
     }
     applyLoadedRows(rows, file.name);
-    { const _a=document.getElementById('asOf'); if(_a) _a.textContent='ข้อมูลจากไฟล์ที่อัปโหลด (ไม่ได้ซิงก์ Google Sheets)'; }
+    { const _a=document.getElementById('asOf'); if(_a) _a.textContent='ข้อมูลจากไฟล์ที่อัปโหลด'; }
     dataSource = 'file'; // สลับไปใช้ไฟล์ที่อัปโหลดเอง หยุดให้ข้อมูลจาก Google Sheet เขียนทับชั่วคราว
     setSheetStatus('error', '⏸️ หยุดซิงค์ Google Sheet ชั่วคราว', 'กำลังแสดงข้อมูลจากไฟล์ที่อัปโหลด · กดปุ่ม ✕ ที่ไฟล์เพื่อกลับไปใช้ Google Sheet');
   }catch(err){
@@ -7610,7 +7610,7 @@ function setAsOfSync(d){
   const el = document.getElementById('asOf');
   if(!el) return;
   el.textContent = 'ข้อมูล ณ วันที่ ' + d.toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'})
-    + ' เวลา ' + d.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) + ' น. (ซิงก์ Google Sheets)';
+    + ' เวลา ' + d.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) + ' น.';
 }
 
 async function loadFromGoogleSheet(isAutoRefresh){
@@ -7638,7 +7638,7 @@ async function loadFromGoogleSheet(isAutoRefresh){
   }catch(err){
     setSheetStatus('error', '⚠️ เชื่อมต่อ Google Sheet ไม่สำเร็จ', 'สาเหตุ: ' + err.message + ' · กดปุ่ม 🔄 เพื่อลองใหม่');
     console.error('Google Sheet sync error:', err);
-    { const _a=document.getElementById('asOf'); if(_a && _a.textContent.indexOf('—')!==-1) _a.textContent='ข้อมูล ณ วันที่ — (ซิงก์ Google Sheets ไม่สำเร็จ)'; }
+    { const _a=document.getElementById('asOf'); if(_a && _a.textContent.indexOf('—')!==-1) _a.textContent='ข้อมูล ณ วันที่ — (ซิงก์ไม่สำเร็จ)'; }
   }
 }
 
@@ -7750,7 +7750,7 @@ function init(){
   // pill "ข้อมูล ณ วันที่ ..." แสดงวัน-เวลาที่ซิงก์ข้อมูลกับ Google Sheets ล่าสุด (ตั้งค่าใน setAsOfSync)
   const asOfEl = document.getElementById('asOf');
   asOfEl.style.fontVariantNumeric = 'tabular-nums';
-  asOfEl.textContent = 'ข้อมูล ณ วันที่ — (กำลังซิงค์ Google Sheets…)';
+  asOfEl.textContent = 'ข้อมูล ณ วันที่ —';
   initChartSwitchers();
   initToolPanelTabs();
   initTopNControls();
