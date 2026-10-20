@@ -3025,7 +3025,7 @@ function calDaysLeftCellHTML(val){
 // two separate count columns — "-" when everything's fine.
 function calDaysGroupBadgeHTML(row){
   const chips = [];
-  if(row.calExpired) chips.push(`<span class="caldays-num expired">${row.calExpired}</span>`);
+  if(row.calExpired) chips.push(`<span class="caldays-badge expired">⛔ ${row.calExpired}</span>`);
   if(row.calWarn) chips.push(`<span class="caldays-badge warn">⚠️ ใกล้ครบกำหนด ${row.calWarn} ชิ้น</span>`);
   if(!chips.length) return `<span class="caldays-ok">-</span>`;
   return chips.join('<br>');
