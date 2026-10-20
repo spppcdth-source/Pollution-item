@@ -7737,8 +7737,16 @@ function initGsheetSync(){
 
 /* ======================= INIT ======================= */
 function init(){
-  const today = new Date();
-  document.getElementById('asOf').textContent = 'ข้อมูล ณ วันที่ ' + today.toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'});
+  // วันที่ + เวลา อัปเดตทุกวินาที (เวลาเครื่องผู้ใช้)
+  const asOfEl = document.getElementById('asOf');
+  asOfEl.style.fontVariantNumeric = 'tabular-nums';
+  const updateAsOf = ()=>{
+    const now = new Date();
+    asOfEl.textContent = 'ข้อมูล ณ วันที่ ' + now.toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'})
+      + ' เวลา ' + now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) + ' น.';
+  };
+  updateAsOf();
+  setInterval(updateAsOf, 1000);
   initChartSwitchers();
   initToolPanelTabs();
   initTopNControls();
