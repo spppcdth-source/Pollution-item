@@ -3720,7 +3720,7 @@ function withBusyLabel(btn, promise){
 // captures as a blank page — which is exactly what happened the first
 // time around. Being on-screen for the ~1-2 seconds a save takes is a
 // reasonable trade for actually getting content in the file.
-console.info('PDF preview build v8');
+console.info('PDF preview build v9');
 function saveElementAsPDF(el, filename, orientation, scale){
   orientation = orientation || "landscape";
   scale = scale || 2;
@@ -3737,7 +3737,16 @@ function saveElementAsPDF(el, filename, orientation, scale){
   const pageWidthMM = (orientation === "landscape" ? 297 : 210) - 8*2;
   el.style.width = pageWidthMM + "mm";
   el.style.maxWidth = "none";
+  // The forced-print state briefly shows the print layout full-screen. Cover
+  // it so the person only ever sees a "preparing" box, then the preview window.
+  const cover = document.createElement("div");
+  cover.id = "pdfBusyCover";
+  cover.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483000;align-items:center;justify-content:center;background:rgba(15,20,50,.72);color:#fff;font:700 18px 'Sarabun',sans-serif;";
+  cover.style.setProperty("display","flex","important");
+  cover.innerHTML = "<div style=\"background:#fff;color:#1b2150;padding:22px 34px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.4);\">\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF...</div>";
+  document.body.appendChild(cover);
   const cleanup = ()=>{
+    cover.remove();
     document.documentElement.classList.remove("pdf-force-print");
     styleTag.remove();
     el.style.width = prevWidth;
@@ -3773,10 +3782,8 @@ function saveElementAsPDF(el, filename, orientation, scale){
   })
   .then(res=>{
     cleanup();
-    let img = null;
-    try{ img = res.canvas ? res.canvas.toDataURL("image/jpeg", 0.9) : null; }catch(e){ img = null; }
     // Nothing is downloaded here: the preview window's button does the saving.
-    showPdfBlobPreview(res.pdf, filename, img);
+    showPdfBlobPreview(res.pdf, filename, res.canvas);
   }, err=>{ cleanup(); throw err; });
 }
 
@@ -3934,18 +3941,35 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
     </div>`;
   ov.querySelector('small').textContent = filename;
   const body = ov.querySelector('.dpp-body');
-  if(imgUrl){
-    const img = document.createElement('img');
-    img.alt = '\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF';
-    img.src = imgUrl;
-    img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
-    body.appendChild(img);
-  } else {
+  const showFrame = ()=>{
+    body.innerHTML = '';
     body.classList.add('dpp-frame');
     ov.querySelector('.dpp-box').classList.add('dpp-tall');
     const fr = document.createElement('iframe');
     fr.src = url + '#view=FitH';
     body.appendChild(fr);
+  };
+  let imgObjUrl = null;
+  const showImage = (src)=>{
+    const img = document.createElement('img');
+    img.alt = '\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF';
+    img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
+    img.addEventListener('error', showFrame);
+    img.src = src;
+    body.appendChild(img);
+  };
+  if(imgUrl && typeof imgUrl === 'object' && imgUrl.toBlob){
+    try{
+      imgUrl.toBlob(b=>{
+        if(!b){ showFrame(); return; }
+        imgObjUrl = URL.createObjectURL(b);
+        showImage(imgObjUrl);
+      }, 'image/jpeg', 0.92);
+    }catch(e){ showFrame(); }
+  } else if(imgUrl){
+    showImage(imgUrl);
+  } else {
+    showFrame();
   }
   const prevOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
@@ -3955,7 +3979,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
     document.body.style.overflow = prevOverflow;
     ov.remove();
     if(printFrame) printFrame.remove();
-    setTimeout(()=> URL.revokeObjectURL(url), 60000);
+    setTimeout(()=>{ URL.revokeObjectURL(url); if(imgObjUrl) URL.revokeObjectURL(imgObjUrl); }, 60000);
   };
   const onKey = e=>{ if(e.key === 'Escape'){ e.stopPropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
