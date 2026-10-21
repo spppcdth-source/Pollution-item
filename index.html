@@ -4037,7 +4037,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
     if(!act) return;
     const what = act.dataset.act;
     if(what === 'save'){
-      try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+      try{ pdfRef.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
       return close();
     }
     if(what === 'print'){
@@ -4060,8 +4060,9 @@ function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
 }
 
 /* ===== Preview window shown before the dashboard PDF is actually saved ===== */
-function showDashboardPdfPreview(imgUrl, pdf, filename){
+function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
   ensureDppStyle();
+  let pdfRef = pdf;
   return new Promise(resolve=>{
     const ov = document.createElement('div');
     ov.className = 'dpp-overlay';
@@ -4082,8 +4083,26 @@ function showDashboardPdfPreview(imgUrl, pdf, filename){
       </div>`;
     ov.querySelector('small').textContent = filename;
     const img = ov.querySelector('img');
-    img.src = imgUrl;
     const body = ov.querySelector('.dpp-body');
+    const saveBtnEl = ov.querySelector('[data-act="save"]');
+    if(imgUrl){ img.src = imgUrl; }
+    else {
+      // Opened instantly while the picture is still being rendered.
+      body.classList.add('dpp-loading');
+      body.insertAdjacentHTML('afterbegin','<div class="dpp-wait" style="padding:60px 20px;text-align:center;font-weight:700;color:#5a6099;">\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07...</div>');
+      img.style.display = 'none';
+      saveBtnEl.disabled = true;
+    }
+    if(ctl){
+      ctl.setImage = (url, pdfObj)=>{
+        pdfRef = pdfObj || pdfRef;
+        img.onload = ()=>{ const w = body.querySelector('.dpp-wait'); if(w) w.remove(); img.style.display = ''; };
+        img.src = url;
+        body.classList.remove('dpp-loading');
+        saveBtnEl.disabled = false;
+      };
+      ctl.close = ()=>{ if(ov.parentNode) ov.querySelector('[data-act="cancel"]').click(); };
+    }
     img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -4099,6 +4118,7 @@ function showDashboardPdfPreview(imgUrl, pdf, filename){
       if(e.target === ov) return close();
       const act = e.target.closest && e.target.closest('[data-act]');
       if(!act) return;
+      if(act.dataset.act === 'save' && !pdfRef) return;
       if(act.dataset.act === 'save'){
         try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
       }
@@ -4137,50 +4157,48 @@ function exportDashboardToPDF(){
   const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
   const twoFrames = ()=> new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
 
-  return fontsReady.then(twoFrames).then(()=>{
-    // Page = A4 landscape (297 x 210 mm). Measure the content at 1360px wide;
-    // if it is taller than one A4 page at that width, make the page WIDER
-    // (extra background on the sides) so everything still fits on ONE page
-    // instead of splitting a chart across two.
+  // Open the preview window RIGHT AWAY (with a "building preview" message) so the
+  // click feels instant; the picture is dropped in as soon as it is rendered.
+  const ctl = {};
+  showDashboardPdfPreview(null, null, filename, ctl);
+
+  return twoFrames().then(()=> Promise.race([fontsReady, new Promise(r=>setTimeout(r,1200))])).then(()=>{
     const RATIO = 210 / 297;
     let Wf = 1360;
-    const Hn = wrap.offsetHeight;                 // natural height at 1360px
+    const Hn = wrap.offsetHeight;
     if(Hn + 3 > Wf * RATIO){
       Wf = Math.ceil((Hn + 3) / RATIO);
       wrap.style.width = Wf + 'px';
       holder.style.width = Wf + 'px';
     }
-    // 3px below one full page, so rounding can never spill onto a 2nd page
     const Hf = Math.floor(Wf * RATIO) - 3;
     wrap.style.minHeight = Hf + 'px';
-    // Render the element ourselves with html2canvas (no html2pdf clone/container,
-    // which was the thing clipping the edges), then hand the canvas to jsPDF.
     const H = Math.max(Hf, wrap.offsetHeight);
-    // Adaptive resolution: keep the bitmap near ~2600px wide no matter how wide
-    // the page had to grow for a long Top-N list. A fixed scale:2 on a very wide /
-    // tall page made a gigantic canvas (slow, and could blank out or crash the tab).
-    const sc = Math.max(0.75, Math.min(2, 2600 / Wf, Math.sqrt(9e6 / (Wf * H))));
+    // ~2000px wide bitmap (about 170 dpi on A4) keeps rendering fast.
+    const sc = Math.max(0.6, Math.min(1.6, 2000 / Wf, Math.sqrt(6e6 / (Wf * H))));
     return html2canvas(wrap, {
-      scale: sc, useCORS: true, backgroundColor: bg, logging: false, imageTimeout: 8000,
+      scale: sc, useCORS: true, backgroundColor: bg, logging: false, imageTimeout: 4000,
       width: Wf, height: H, windowWidth: Wf, windowHeight: H
     }).then(canvas=>{
       cleanup();
-      return html2pdf().set({
-        margin: 0, filename: filename,
-        image: { type: 'jpeg', quality: 0.9 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
-      }).from(canvas, 'canvas').toImg().toPdf().get('pdf').then(pdf=>{
-        // Preview image via toBlob (async, no giant base64 string) instead of toDataURL.
-        return new Promise(res=>{
-          canvas.toBlob(b=>{
-            const url = b ? URL.createObjectURL(b) : canvas.toDataURL('image/jpeg', 0.85);
-            showDashboardPdfPreview(url, pdf, filename);
-            res();
-          }, 'image/jpeg', 0.85);
-        });
+      // The slow jsPDF/JPEG step is deferred until the person presses "download";
+      // the preview only needs one quick JPEG of the canvas.
+      const lazyPdf = { save: ()=>{
+        html2pdf().set({
+          margin: 0, filename: filename,
+          image: { type: 'jpeg', quality: 0.9 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
+        }).from(canvas, 'canvas').toImg().toPdf().save()
+          .catch(e=>{ console.error(e); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); });
+      }};
+      return new Promise(res=>{
+        canvas.toBlob(b=>{
+          ctl.setImage(b ? URL.createObjectURL(b) : canvas.toDataURL('image/jpeg', 0.8), lazyPdf);
+          res();
+        }, 'image/jpeg', 0.8);
       });
     });
-  }).then(cleanup, err=>{ cleanup(); throw err; });
+  }).then(cleanup, err=>{ cleanup(); if(ctl.close) ctl.close(); throw err; });
 }
 (function(){
   const btn = document.getElementById('dashPdfBtn');
@@ -8253,3 +8271,4 @@ init();
 </script>
 </body>
 </html>
+       
