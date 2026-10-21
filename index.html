@@ -606,6 +606,8 @@
   .side-toggle-btn .stb-arrow{flex-shrink:0;transition:transform .15s;}
   .side-toggle-btn.active .stb-arrow{transform:rotate(180deg);}
   .side-section.is-collapsed{display:none;}
+  .more-filters{display:flex;flex-direction:column;gap:10px;}
+  .more-filters.is-collapsed{display:none;}
   .side-label{
     font-size:calc(11px * var(--text-scale, 1));font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     color:var(--sidebar-muted);
@@ -2332,6 +2334,13 @@
         <select id="f-age"><option value="">ทั้งหมด</option></select>
       </div>
 
+      <button type="button" class="side-toggle-btn" id="toggleMoreFiltersBtn" aria-expanded="false" title="แสดง/ซ่อน ตัวกรองเพิ่มเติม">
+        <span class="stb-ic">➕</span>
+        <span class="stb-txt">ตัวกรองเพิ่มเติม (ปี พ.ศ. / สอบเทียบ / สถานะเครื่องมือ)</span>
+        <span class="stb-arrow">▾</span>
+      </button>
+
+      <div class="more-filters is-collapsed" id="moreFilters">
       <div class="field">
         <label>📅 ปี พ.ศ. ที่ได้รับเครื่องมือ</label>
         <select id="f-year"><option value="">ทั้งหมด</option></select>
@@ -2345,6 +2354,7 @@
       <div class="field">
         <label>🛠️ สถานะเครื่องมือ</label>
         <select id="f-cond"><option value="">ทั้งหมด</option></select>
+      </div>
       </div>
 
       <button class="reset-btn" id="resetBtn">🧹 ล้างตัวกรองทั้งหมด</button>
@@ -8196,6 +8206,21 @@ init();
       var secs=['importSection','connectSection'].map(function(id){return document.getElementById(id);});
       var open=btn.classList.contains('active');
       secs.forEach(function(el){ if(el) el.classList.toggle('is-collapsed',open); });
+      btn.classList.toggle('active',!open);
+      btn.setAttribute('aria-expanded',String(!open));
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',setup); else setup();
+})();
+</script>
+<script>
+(function(){
+  function setup(){
+    var btn=document.getElementById('toggleMoreFiltersBtn'), box=document.getElementById('moreFilters');
+    if(!btn||!box||btn.dataset.bound) return; btn.dataset.bound='1';
+    btn.addEventListener('click',function(){
+      var open=btn.classList.contains('active');
+      box.classList.toggle('is-collapsed',open);
       btn.classList.toggle('active',!open);
       btn.setAttribute('aria-expanded',String(!open));
     });
