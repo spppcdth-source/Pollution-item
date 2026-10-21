@@ -2486,6 +2486,9 @@
     <div class="panel" id="panelMapSection" style="margin-bottom:18px;">
       <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">🗺️ แผนที่ตำแหน่งหน่วยงานและเครื่องมือ <span class="clickable-note">ข้อมูลปรับตามตัวกรองด้านซ้ายอัตโนมัติ</span>
         <span style="margin-left:auto;display:inline-flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="mapOnlyPdfBtn2" class="list-pdf-btn" title="บันทึกแผนที่และตารางที่แสดงอยู่เป็นไฟล์ PDF">
+            <span class="icon">💾</span><span class="label">บันทึก PDF</span>
+          </button>
           <button type="button" id="mapOnlyPrintBtn2" class="list-pdf-btn" title="พิมพ์แผนที่และตารางที่แสดงอยู่">
             <span class="icon">🖨️</span><span class="label">พิมพ์</span>
           </button>
@@ -4556,11 +4559,25 @@ function exportMapAndTablesToPDF(mode){
   printArea.style.cssText = prevCssText;
   printArea.style.setProperty('--pdf-scale', String(scale));
 
+  if(mode === "save"){
+    const pad2 = n => String(n).padStart(2,"0");
+    const fname = `แผนที่เครื่องมือ-${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}.pdf`;
+    return saveElementAsPDF(printArea, fname, "landscape").catch(err=>{
+      console.error(err);
+      alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    });
+  }
   // Open the browser's own print window (it shows its own preview) -- no custom
   // preview window or cover screen.
   window.print();
 }
 document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>exportMapAndTablesToPDF("print"));
+document.getElementById("mapOnlyPdfBtn2").addEventListener("click", ()=>{
+  const b = document.getElementById("mapOnlyPdfBtn2");
+  withBusyLabel(b, Promise.resolve().then(()=>exportMapAndTablesToPDF("save"))).catch(err=>{
+    console.error(err); alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+  });
+});
 
 // Computes + draws the leader lines for the print-only layout built above.
 // Routed as tidy orthogonal ("elbow") connectors: each line leaves its own
