@@ -3865,6 +3865,75 @@ function buildDashboardPdfArea(){
   return wrap;
 }
 
+/* ===== Preview window shown before the dashboard PDF is actually saved ===== */
+function showDashboardPdfPreview(imgUrl, pdf, filename){
+  if(!document.getElementById('dashPdfPreviewStyle')){
+    const st = document.createElement('style');
+    st.id = 'dashPdfPreviewStyle';
+    st.textContent = `
+      .dpp-overlay{position:fixed;inset:0;z-index:100000;background:rgba(15,20,50,.72);display:flex;align-items:center;justify-content:center;padding:18px;}
+      .dpp-box{background:#fff;color:#1b2150;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.4);width:min(1200px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;font-family:inherit;}
+      .dpp-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #e3e6f6;}
+      .dpp-title{font-weight:700;font-size:16px;flex:1;min-width:0;}
+      .dpp-title small{display:block;font-weight:400;font-size:12px;color:#6b72a8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .dpp-body{flex:1;overflow:auto;background:#d9dcef;padding:16px;text-align:center;}
+      .dpp-body img{display:inline-block;max-width:100%;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.25);background:#fff;cursor:zoom-in;}
+      .dpp-body.zoomed img{max-width:none;width:1600px;cursor:zoom-out;}
+      .dpp-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid #e3e6f6;flex-wrap:wrap;}
+      .dpp-hint{margin-right:auto;font-size:12px;color:#6b72a8;}
+      .dpp-btn{border:1.5px solid #3d4bd0;background:#fff;color:#3d4bd0;border-radius:10px;padding:9px 18px;font:inherit;font-weight:700;cursor:pointer;}
+      .dpp-btn.primary{background:#3d4bd0;color:#fff;}
+      .dpp-btn:hover{filter:brightness(.93);}
+    `;
+    document.head.appendChild(st);
+  }
+  return new Promise(resolve=>{
+    const ov = document.createElement('div');
+    ov.className = 'dpp-overlay';
+    ov.setAttribute('role','dialog');
+    ov.setAttribute('aria-modal','true');
+    ov.innerHTML = `
+      <div class="dpp-box">
+        <div class="dpp-head">
+          <div class="dpp-title">\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF<small></small></div>
+          <button type="button" class="dpp-btn" data-act="close" aria-label="\u0e1b\u0e34\u0e14">\u2715</button>
+        </div>
+        <div class="dpp-body"><img alt="\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF"></div>
+        <div class="dpp-foot">
+          <span class="dpp-hint">\u0e04\u0e25\u0e34\u0e01\u0e17\u0e35\u0e48\u0e23\u0e39\u0e1b\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e0b\u0e39\u0e21\u0e40\u0e02\u0e49\u0e32/\u0e2d\u0e2d\u0e01</span>
+          <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
+          <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
+        </div>
+      </div>`;
+    ov.querySelector('small').textContent = filename;
+    const img = ov.querySelector('img');
+    img.src = imgUrl;
+    const body = ov.querySelector('.dpp-body');
+    img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const close = ()=>{
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prevOverflow;
+      ov.remove();
+      resolve();
+    };
+    const onKey = e=>{ if(e.key === 'Escape'){ e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    ov.addEventListener('click', e=>{
+      if(e.target === ov) return close();
+      const act = e.target.closest && e.target.closest('[data-act]');
+      if(!act) return;
+      if(act.dataset.act === 'save'){
+        try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+      }
+      close();
+    });
+    document.body.appendChild(ov);
+    const first = ov.querySelector('[data-act="save"]'); if(first) first.focus();
+  });
+}
+
 function exportDashboardToPDF(){
   if(typeof html2pdf === 'undefined'){
     return Promise.reject(new Error('html2pdf library not loaded'));
@@ -3909,18 +3978,37 @@ function exportDashboardToPDF(){
     // 3px below one full page, so rounding can never spill onto a 2nd page
     const Hf = Math.floor(Wf * RATIO) - 3;
     wrap.style.minHeight = Hf + 'px';
-    return html2pdf().set({
+    const opt = {
       margin: 0,
       filename: filename,
       image: { type: 'jpeg', quality: 0.98 },
-      // html2pdf sizes its own off-screen container from the page size, so
-      // the real capture size is pinned here instead.
+      // html2pdf puts the clone inside its own container that is only as wide
+      // as an A4 page (~1123px). Our content is Wf px wide, so that container
+      // clipped the left/right edges. onclone widens it to the real width.
       html2canvas: { scale: 2, useCORS: true, backgroundColor: bg,
                      width: Wf, height: Math.max(Hf, wrap.offsetHeight),
-                     windowWidth: Wf, scrollX: 0, scrollY: 0 },
+                     windowWidth: Wf, scrollX: 0, scrollY: 0, x: 0, y: 0,
+                     onclone: (doc)=>{
+                       doc.querySelectorAll('.html2pdf__container').forEach(c=>{
+                         c.style.width = Wf + 'px';
+                         c.style.maxWidth = 'none';
+                         c.style.left = '0'; c.style.right = 'auto';
+                         c.style.margin = '0';
+                         c.style.overflow = 'visible';
+                       });
+                     } },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
       pagebreak: { mode: ['css'] }
-    }).from(wrap).save();
+    };
+    const worker = html2pdf().set(opt).from(wrap);
+    let canvas, pdf;
+    return worker.toCanvas().get('canvas').then(c=>{ canvas = c; })
+      .then(()=> worker.toImg().toPdf().get('pdf').then(p=>{ pdf = p; }))
+      .then(()=>{
+        cleanup();
+        // Show a preview first; the real download only happens on confirm.
+        showDashboardPdfPreview(canvas.toDataURL('image/jpeg', 0.92), pdf, filename);
+      });
   }).then(cleanup, err=>{ cleanup(); throw err; });
 }
 (function(){
