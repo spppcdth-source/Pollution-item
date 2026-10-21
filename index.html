@@ -730,7 +730,7 @@
     outline:none;
   }
   .ms-box:focus, .ms-wrap.open .ms-box{border-color:var(--ok);}
-  .ms-summary{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
+  .ms-summary{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .ms-summary.placeholder{color:var(--sidebar-muted);}
   .ms-clear{
     display:none;border:none;background:none;color:var(--sidebar-muted,#667);
@@ -762,12 +762,11 @@
   .ms-option{
     display:flex;align-items:center;gap:8px;
     padding:6px 8px;border-radius:6px;font-size:calc(12.5px * var(--text-scale, 1));color:var(--sidebar-text);
-    cursor:pointer;white-space:normal;overflow:visible;line-height:1.35;
+    cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .ms-option:hover{background:var(--soft-tint);}
-  .ms-option{align-items:flex-start;}
-  .ms-option input[type=checkbox]{margin-top:2px;flex-shrink:0;accent-color:var(--soft-accent);cursor:pointer;}
-  .ms-option span{min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;}
+  .ms-option input[type=checkbox]{flex-shrink:0;accent-color:var(--soft-accent);cursor:pointer;}
+  .ms-option span{overflow:hidden;text-overflow:ellipsis;}
   .ms-empty{padding:8px 9px;font-size:calc(12px * var(--text-scale, 1));color:var(--sidebar-muted,#667);}
 
   .reset-btn{
@@ -5542,6 +5541,7 @@ function makeMultiSelect(selectId, filterKey){
     const vals = filters[filterKey] || [];
     if(!vals.length){
       summary.textContent = 'ทั้งหมด';
+      summary.title = '';
       summary.classList.add('placeholder');
     } else {
       summary.classList.remove('placeholder');
