@@ -4375,7 +4375,7 @@ function computePrintHighlightCodes(){
   return allCodes;
 }
 
-function exportMapAndTablesToPDF(mode){
+function exportMapAndTablesCore(mode, ctl, fname){
   const printArea = document.getElementById("printArea");
   if(printArea.parentElement !== document.body){
     document.body.appendChild(printArea);
@@ -4560,16 +4560,59 @@ function exportMapAndTablesToPDF(mode){
   printArea.style.setProperty('--pdf-scale', String(scale));
 
   if(mode === "save"){
-    const pad2 = n => String(n).padStart(2,"0");
-    const fname = `แผนที่เครื่องมือ-${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}.pdf`;
-    return saveElementAsPDF(printArea, fname, "landscape").catch(err=>{
-      console.error(err);
-      alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    // Render a COPY of #printArea inside html2canvas' hidden clone (print layout is
+    // switched on only in that clone), so the live page is never touched and no
+    // cover screen is needed. The new preview window is already open.
+    const forcedCSS = getForcedPrintCSS();
+    const pageWpx = Math.round(PRINT_PAGE_WIDTH_MM * 96 / 25.4);
+    const winW = Math.ceil(297 * 96 / 25.4), winH = Math.ceil(210 * 96 / 25.4);
+    const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    return Promise.race([fontsReady, new Promise(r=>setTimeout(r,500))]).then(()=> html2canvas(printArea, {
+      scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false, imageTimeout: 4000,
+      windowWidth: winW, windowHeight: winH, scrollX: 0, scrollY: 0,
+      onclone: doc=>{
+        try{
+          const pa = doc.getElementById("printArea");
+          Array.from(doc.body.children).forEach(c=>{ if(c !== pa) c.remove(); });
+          doc.querySelectorAll("script").forEach(n=>n.remove());
+          const st = doc.createElement("style");
+          st.textContent = forcedCSS;
+          doc.head.appendChild(st);
+          doc.documentElement.classList.add("pdf-force-print");
+          pa.style.width = PRINT_PAGE_WIDTH_MM + "mm";
+          pa.style.maxWidth = "none";
+        }catch(e){ console.error(e); }
+      }
+    })).then(canvas=>{
+      const lazyPdf = { save: ()=> html2pdf().set({
+          margin:[6,8,6,8], filename: fname,
+          image:{ type:"jpeg", quality:0.95 },
+          jsPDF:{ unit:"mm", format:"a4", orientation:"landscape", compress:true }
+        }).from(canvas, "canvas").toImg().toPdf().save()
+          .catch(e=>{ console.error(e); alert("บันทึก PDF ไม่สำเร็จ"); })
+      };
+      return new Promise(res=>{
+        canvas.toBlob(blob=>{
+          ctl.setImage(blob ? URL.createObjectURL(blob) : canvas.toDataURL("image/jpeg", 0.9), lazyPdf);
+          res();
+        }, "image/jpeg", 0.92);
+      });
     });
   }
   // Open the browser's own print window (it shows its own preview) -- no custom
   // preview window or cover screen.
   window.print();
+}
+function exportMapAndTablesToPDF(mode){
+  if(mode !== "save") return exportMapAndTablesCore(mode);
+  const d = new Date(), pad2 = n => String(n).padStart(2,"0");
+  const fname = `แผนที่เครื่องมือ-${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}.pdf`;
+  // New preview window opens immediately; the picture drops in when rendered.
+  const ctl = {};
+  showDashboardPdfPreview(null, null, fname, ctl);
+  return new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)))
+    .then(()=> exportMapAndTablesCore("save", ctl, fname))
+    .catch(err=>{ if(ctl.close) ctl.close(); throw err; });
 }
 document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>exportMapAndTablesToPDF("print"));
 document.getElementById("mapOnlyPdfBtn2").addEventListener("click", ()=>{
