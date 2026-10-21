@@ -2303,13 +2303,8 @@
       <div class="side-label">🧰 ตัวกรองข้อมูล</div>
 
       <div class="field">
-        <label>🔍 ค้นหาเครื่องมือ / หน่วยงาน</label>
+        <label>🔍 คำค้นหา</label>
         <input type="text" id="searchInput" placeholder="พิมพ์คำค้นหา...">
-      </div>
-
-      <div class="field">
-        <label>🔧 ชื่อเครื่องมือ</label>
-        <select id="f-item"><option value="">ทั้งหมด</option></select>
       </div>
 
       <div class="field">
@@ -2318,8 +2313,28 @@
       </div>
 
       <div class="field">
+        <label>🔧 ชื่อเครื่องมือ</label>
+        <select id="f-item"><option value="">ทั้งหมด</option></select>
+      </div>
+
+      <div class="field">
         <label>🏢 หน่วยงาน</label>
         <select id="f-unit"><option value="">ทั้งหมด</option></select>
+      </div>
+
+      <div class="field">
+        <label>✅ สถานะการใช้งาน</label>
+        <select id="f-use"><option value="">ทั้งหมด</option></select>
+      </div>
+
+      <div class="field">
+        <label>⏳ อายุการใช้งาน</label>
+        <select id="f-age"><option value="">ทั้งหมด</option></select>
+      </div>
+
+      <div class="field">
+        <label>📅 ปี พ.ศ. ที่ได้รับเครื่องมือ</label>
+        <select id="f-year"><option value="">ทั้งหมด</option></select>
       </div>
 
       <div class="field">
@@ -2330,16 +2345,6 @@
       <div class="field">
         <label>🛠️ สถานะเครื่องมือ</label>
         <select id="f-cond"><option value="">ทั้งหมด</option></select>
-      </div>
-
-      <div class="field">
-        <label>⏳ อายุของเครื่อง</label>
-        <select id="f-age"><option value="">ทั้งหมด</option></select>
-      </div>
-
-      <div class="field">
-        <label>✅ สถานะการใช้งาน</label>
-        <select id="f-use"><option value="">ทั้งหมด</option></select>
       </div>
 
       <button class="reset-btn" id="resetBtn">🧹 ล้างตัวกรองทั้งหมด</button>
@@ -5758,8 +5763,8 @@ function makeMultiSelect(selectId, filterKey){
   sel._msRefresh();
 }
 
-const MULTI_FILTER_FIELDS = ['f-item','f-cat','f-unit','f-cal','f-cond','f-age','f-use'];
-const MULTI_FILTER_KEYS = { 'f-item':'item', 'f-cat':'cat', 'f-unit':'unit', 'f-cal':'cal', 'f-cond':'cond', 'f-age':'age', 'f-use':'use' };
+const MULTI_FILTER_FIELDS = ['f-cat','f-item','f-unit','f-use','f-age','f-year','f-cal','f-cond'];
+const MULTI_FILTER_KEYS = { 'f-item':'item', 'f-cat':'cat', 'f-unit':'unit', 'f-cal':'cal', 'f-cond':'cond', 'f-age':'age', 'f-use':'use', 'f-year':'year' };
 
 function initSearchableSelects(){
   MULTI_FILTER_FIELDS.forEach(id=> makeMultiSelect(id, MULTI_FILTER_KEYS[id]));
@@ -5804,6 +5809,7 @@ function refreshFilterOptions(){
   populateSelect('f-cond','cond', applyFilters(currentData,'cond'));
   populateSelect('f-age','age', applyFilters(currentData,'age'));
   populateSelect('f-use','use', applyFilters(currentData,'use'));
+  populateSelect('f-year','year', applyFilters(currentData,'year'));
   populateSelect('yearlyTrend-year','year', applyFilters(currentData,'year'));
 }
 
