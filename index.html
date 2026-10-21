@@ -3755,15 +3755,18 @@ function saveElementAsPDF(el, filename, orientation, scale){
   const waitForPaint = ()=> new Promise(resolve=>{
     requestAnimationFrame(()=> requestAnimationFrame(resolve));
   });
-  return waitForPaint().then(()=> html2pdf().set({
-    margin:[6,8,6,8],
-    filename: filename,
-    image:{ type:"jpeg", quality:0.98 },
-    html2canvas:{ scale:scale, useCORS:true, backgroundColor:"#ffffff" },
-    jsPDF:{ unit:"mm", format:"a4", orientation: orientation },
-    pagebreak:{ mode:["css","legacy"] }
-  }).from(el).save())
-  .then(cleanup, err=>{ cleanup(); throw err; });
+  return waitForPaint().then(()=> new Promise((resolve, reject)=>{
+    html2pdf().set({
+      margin:[6,8,6,8],
+      filename: filename,
+      image:{ type:"jpeg", quality:0.98 },
+      html2canvas:{ scale:scale, useCORS:true, backgroundColor:"#ffffff" },
+      jsPDF:{ unit:"mm", format:"a4", orientation: orientation },
+      pagebreak:{ mode:["css","legacy"] }
+    }).from(el).toPdf().get("pdf").then(pdf=>{ resolve(pdf); }, reject);
+  }))
+  .then(pdf=>{ cleanup(); showPdfBlobPreview(pdf, filename); },
+        err=>{ cleanup(); throw err; });
 }
 
 /* =========================================================
@@ -3866,8 +3869,7 @@ function buildDashboardPdfArea(){
   return wrap;
 }
 
-/* ===== Preview window shown before the dashboard PDF is actually saved ===== */
-function showDashboardPdfPreview(imgUrl, pdf, filename){
+function ensureDppStyle(){
   if(!document.getElementById('dashPdfPreviewStyle')){
     const st = document.createElement('style');
     st.id = 'dashPdfPreviewStyle';
@@ -3888,6 +3890,76 @@ function showDashboardPdfPreview(imgUrl, pdf, filename){
     `;
     document.head.appendChild(st);
   }
+  if(!document.getElementById('dppExtraStyle')){
+    const st2 = document.createElement('style');
+    st2.id = 'dppExtraStyle';
+    st2.textContent = '.dpp-box.dpp-tall{height:100%;} .dpp-body.dpp-frame{padding:0;overflow:hidden;background:#525659;} .dpp-body.dpp-frame iframe{width:100%;height:100%;border:0;display:block;background:#fff;}';
+    document.head.appendChild(st2);
+  }
+}
+
+/* ===== Multi-page PDF preview (real PDF in an iframe) with Print + Download ===== */
+function showPdfBlobPreview(pdf, filename){
+  ensureDppStyle();
+  const blob = pdf.output('blob');
+  const url = URL.createObjectURL(blob);
+  const ov = document.createElement('div');
+  ov.className = 'dpp-overlay';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-modal','true');
+  ov.innerHTML = `
+    <div class="dpp-box dpp-tall">
+      <div class="dpp-head">
+        <div class="dpp-title">\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF<small></small></div>
+        <button type="button" class="dpp-btn" data-act="close" aria-label="\u0e1b\u0e34\u0e14">\u2715</button>
+      </div>
+      <div class="dpp-body dpp-frame"><iframe title="\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF"></iframe></div>
+      <div class="dpp-foot">
+        <span class="dpp-hint">\u0e16\u0e49\u0e32\u0e44\u0e21\u0e48\u0e40\u0e2b\u0e47\u0e19\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 \u0e43\u0e2b\u0e49\u0e01\u0e14\u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e14\u0e49\u0e40\u0e25\u0e22</span>
+        <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
+        <button type="button" class="dpp-btn" data-act="print">\ud83d\udda8 \u0e1e\u0e34\u0e21\u0e1e\u0e4c</button>
+        <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
+      </div>
+    </div>`;
+  ov.querySelector('small').textContent = filename;
+  ov.querySelector('iframe').src = url + '#view=FitH';
+  const prevOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  const close = ()=>{
+    document.removeEventListener('keydown', onKey, true);
+    document.body.style.overflow = prevOverflow;
+    ov.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 60000);
+  };
+  const onKey = e=>{ if(e.key === 'Escape'){ e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', onKey, true);
+  ov.addEventListener('click', e=>{
+    if(e.target === ov) return close();
+    const act = e.target.closest && e.target.closest('[data-act]');
+    if(!act) return;
+    const what = act.dataset.act;
+    if(what === 'save'){
+      try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+      return close();
+    }
+    if(what === 'print'){
+      // Print the finished PDF itself (not the web page), so it can't come out blank.
+      const fr = ov.querySelector('iframe');
+      try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+      catch(err){
+        const w = window.open(url, '_blank');
+        if(!w) alert('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e1b\u0e34\u0e14\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e48\u0e32\u0e07\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14\u0e41\u0e25\u0e49\u0e27\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e08\u0e32\u0e01\u0e44\u0e1f\u0e25\u0e4c');
+      }
+      return;
+    }
+    close();
+  });
+  document.body.appendChild(ov);
+}
+
+/* ===== Preview window shown before the dashboard PDF is actually saved ===== */
+function showDashboardPdfPreview(imgUrl, pdf, filename){
+  ensureDppStyle();
   return new Promise(resolve=>{
     const ov = document.createElement('div');
     ov.className = 'dpp-overlay';
@@ -4091,11 +4163,12 @@ function exportDetailToPDF(mode){
       alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     });
   } else {
-    window.print();
+    const orgLabel2 = org ? org.label : selected;
+    return saveElementAsPDF(printArea, `รายงาน-${orgLabel2}.pdf`).catch(err=>{ console.error(err); alert("สร้าง PDF ไม่สำเร็จ"); });
   }
 }
 document.getElementById("exportPdfBtn").addEventListener("click", ()=>withBusyLabel(document.getElementById("exportPdfBtn"), exportDetailToPDF("save")));
-document.getElementById("printDetailBtn").addEventListener("click", ()=>exportDetailToPDF("print"));
+document.getElementById("printDetailBtn").addEventListener("click", ()=>withBusyLabel(document.getElementById("printDetailBtn"), exportDetailToPDF("print")));
 
 /* =========================================================
    9a-2. Export ONLY the map graphic + the small per-หน่วยงาน dock
@@ -4308,11 +4381,14 @@ function exportMapAndTablesToPDF(mode){
       alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     });
   } else {
-    window.print();
+    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`).catch(err=>{
+      console.error(err);
+      alert("สร้าง PDF ไม่สำเร็จ");
+    });
   }
 }
 document.getElementById("mapOnlyPrintBtn").addEventListener("click", ()=>withBusyLabel(document.getElementById("mapOnlyPrintBtn"), exportMapAndTablesToPDF("save")));
-document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>exportMapAndTablesToPDF("print"));
+document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>withBusyLabel(document.getElementById("mapOnlyPrintBtn2"), exportMapAndTablesToPDF("print")));
 
 // Computes + draws the leader lines for the print-only layout built above.
 // Routed as tidy orthogonal ("elbow") connectors: each line leaves its own
@@ -6433,10 +6509,13 @@ function exportToolListToPDF(mode){
       alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     });
   } else {
-    window.print();
+    return saveElementAsPDF(printArea, `รายการเครื่องมือ-${fileDate}.pdf`, "landscape", 1.5).catch(err=>{
+      console.error(err);
+      alert("สร้าง PDF ไม่สำเร็จ");
+    });
   }
 }
-document.getElementById('printListBtn').addEventListener('click', ()=>exportToolListToPDF("print"));
+document.getElementById('printListBtn').addEventListener('click', ()=>withBusyLabel(document.getElementById('printListBtn'), exportToolListToPDF("print")));
 
 // Exports the same filtered equipment list as a file that opens directly
 // in Excel (an HTML table saved with an .xls extension — Excel opens
