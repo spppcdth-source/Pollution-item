@@ -4101,6 +4101,33 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
         body.classList.remove('dpp-loading');
         saveBtnEl.disabled = false;
       };
+      // Live (vector) preview: shows the real page DOM scaled to fit - appears
+      // instantly and is perfectly sharp, no bitmap rendering needed.
+      ctl.setNode = (node, W, H, pdfObj)=>{
+        pdfRef = pdfObj || pdfRef;
+        const w = body.querySelector('.dpp-wait'); if(w) w.remove();
+        const stage = document.createElement('div');
+        stage.className = 'dpp-live';
+        stage.style.cssText = 'position:relative;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden;cursor:zoom-in;text-align:left;';
+        node.style.cssText += ';position:absolute;left:0;top:0;margin:0;transform-origin:0 0;pointer-events:none;';
+        node.style.width = W + 'px';
+        stage.appendChild(node);
+        const fit = ()=> Math.min(1, Math.max(120, body.clientWidth - 32) / W);
+        let zoomed = false;
+        const apply = ()=>{
+          const k = zoomed ? Math.min(1.2, 1600 / W) : fit();
+          node.style.transform = 'scale(' + k + ')';
+          stage.style.width = Math.round(W * k) + 'px';
+          stage.style.height = Math.round(H * k) + 'px';
+          stage.style.cursor = zoomed ? 'zoom-out' : 'zoom-in';
+          body.style.textAlign = zoomed && W * k > body.clientWidth ? 'left' : 'center';
+        };
+        stage.addEventListener('click', ()=>{ zoomed = !zoomed; apply(); });
+        body.appendChild(stage);
+        apply();
+        body.classList.remove('dpp-loading');
+        saveBtnEl.disabled = false;
+      };
       ctl.close = ()=>{ if(ov.parentNode) ov.querySelector('[data-act="cancel"]').click(); };
     }
     img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
@@ -4190,41 +4217,29 @@ function exportDashboardToPDF(){
     const Hf = Math.floor(Wf * RATIO) - 3;
     wrap.style.minHeight = Hf + 'px';
     const H = Math.max(Hf, wrap.offsetHeight);
-    // Stage 1: a LOW-res render (about 1/3 of the pixels) just for the preview.
-    const scLow  = Math.max(0.5, Math.min(1, 1300 / Wf, Math.sqrt(2.2e6 / (Wf * H))));
-    // Stage 2: the sharper render used for the real PDF, done in the background.
-    const scHigh = Math.max(0.6, Math.min(1.6, 2000 / Wf, Math.sqrt(6e6 / (Wf * H))));
-    let lowCanvas = null;
+    // Sharp bitmap used ONLY for the real PDF (rendered in the background).
+    const scHigh = Math.max(0.8, Math.min(2, 2600 / Wf, Math.sqrt(9e6 / (Wf * H))));
     let hiPromise = null;
     const startHi = ()=>{
       if(hiPromise) return hiPromise;
-      hiPromise = new Promise(res=>{
-        setTimeout(()=>{
-          draw(scHigh, Wf, H).then(c=>res(c), ()=>res(null));
-        }, 0);
-      }).then(c=>{ cleanup(); return c || lowCanvas; });
+      hiPromise = draw(scHigh, Wf, H).then(c=>{ cleanup(); return c; }, e=>{ cleanup(); throw e; });
       return hiPromise;
     };
     const lazyPdf = { save: ()=>{
       startHi().then(canvas=>
         html2pdf().set({
           margin: 0, filename: filename,
-          image: { type: 'jpeg', quality: 0.9 },
+          image: { type: 'jpeg', quality: 0.95 },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
         }).from(canvas, 'canvas').toImg().toPdf().save()
       ).catch(e=>{ console.error(e); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); });
     }};
-    return draw(scLow, Wf, H).then(canvas=>{
-      lowCanvas = canvas;
-      return new Promise(res=>{
-        canvas.toBlob(b=>{
-          ctl.setImage(b ? URL.createObjectURL(b) : canvas.toDataURL('image/jpeg', 0.8), lazyPdf);
-          res();
-          // warm up the sharp render while the person looks at the preview
-          setTimeout(startHi, 600);
-        }, 'image/jpeg', 0.8);
-      });
-    });
+    // Preview = a scaled live copy of the same page (instant, vector-sharp).
+    const previewNode = wrap.cloneNode(true);
+    ctl.setNode(previewNode, Wf, H, lazyPdf);
+    // Let the dialog paint first, then render the sharp bitmap in the background
+    // so it is (usually) ready by the time "download" is pressed.
+    setTimeout(startHi, 500);
   }).catch(err=>{ cleanup(); if(ctl.close) ctl.close(); throw err; });
 }
 (function(){
