@@ -2446,8 +2446,8 @@
     <div class="panel" id="panelMapSection" style="margin-bottom:18px;">
       <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">🗺️ แผนที่ตำแหน่งหน่วยงานและเครื่องมือ <span class="clickable-note">ข้อมูลปรับตามตัวกรองด้านซ้ายอัตโนมัติ</span>
         <span style="margin-left:auto;display:inline-flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" id="mapOnlyPrintBtn" class="list-pdf-btn" title="บันทึกเฉพาะแผนที่และตารางข้างแผนที่เป็น PDF">
-            <span class="icon">💾</span><span class="label">บันทึกไฟล์ PDF</span>
+          <button type="button" id="mapOnlyPrintBtn2" class="list-pdf-btn" title="พิมพ์แผนที่และตารางที่แสดงอยู่">
+            <span class="icon">🖨️</span><span class="label">พิมพ์</span>
           </button>
           <button type="button" class="expand-btn" title="ขยายเต็มจอ" onclick="togglePanelExpand('panelMapSection')">⛶</button>
         </span>
@@ -3717,8 +3717,8 @@ function withBusyLabel(btn, promise){
 // captures as a blank page — which is exactly what happened the first
 // time around. Being on-screen for the ~1-2 seconds a save takes is a
 // reasonable trade for actually getting content in the file.
-console.info('PDF preview build v11');
-function saveElementAsPDF(el, filename, orientation, scale){
+console.info('PDF preview build v12');
+function saveElementAsPDF(el, filename, orientation, scale, uiMode){
   orientation = orientation || "landscape";
   scale = scale || 2;
   if(typeof html2canvas === "undefined" || typeof html2pdf === "undefined"){
@@ -3778,7 +3778,7 @@ function saveElementAsPDF(el, filename, orientation, scale){
   }).then(pdf=>{
     cleanup();
     // Nothing is downloaded here: the preview window's button does the saving.
-    showPdfBlobPreview(pdf, filename, canvas);
+    showPdfBlobPreview(pdf, filename, canvas, uiMode);
   }, err=>{ cleanup(); throw err; });
 }
 
@@ -3912,7 +3912,7 @@ function ensureDppStyle(){
 }
 
 /* ===== Multi-page PDF preview (real PDF in an iframe) with Print + Download ===== */
-function showPdfBlobPreview(pdf, filename, imgUrl){
+function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
   ensureDppStyle();
   const blob = pdf.output('blob');
   const url = URL.createObjectURL(blob);
@@ -3930,10 +3930,15 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
       <div class="dpp-foot">
         <span class="dpp-hint">\u0e04\u0e25\u0e34\u0e01\u0e17\u0e35\u0e48\u0e23\u0e39\u0e1b\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e0b\u0e39\u0e21\u0e40\u0e02\u0e49\u0e32/\u0e2d\u0e2d\u0e01</span>
         <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
+        <button type="button" class="dpp-btn" data-act="print">\ud83d\udda8 \u0e1e\u0e34\u0e21\u0e1e\u0e4c</button>
         <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
       </div>
     </div>`;
   ov.querySelector('small').textContent = filename;
+  if(uiMode === 'print'){
+    const sv = ov.querySelector('[data-act="save"]'); if(sv) sv.remove();
+    const pb = ov.querySelector('[data-act="print"]'); if(pb) pb.classList.add('primary');
+  }
   const body = ov.querySelector('.dpp-body');
   const showFrame = ()=>{
     body.innerHTML = '';
@@ -4002,7 +4007,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
     close();
   });
   document.body.appendChild(ov);
-  const first = ov.querySelector('[data-act="save"]'); if(first) first.focus();
+  const first = ov.querySelector('[data-act="save"]') || ov.querySelector('[data-act="print"]'); if(first) first.focus();
 }
 
 /* ===== Preview window shown before the dashboard PDF is actually saved ===== */
@@ -4424,18 +4429,18 @@ function exportMapAndTablesToPDF(mode){
   printArea.style.setProperty('--pdf-scale', String(scale));
 
   if(mode === "save"){
-    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`).catch(err=>{
+    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`, "landscape", 2, "print").catch(err=>{
       console.error(err);
       alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     });
   } else {
-    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`).catch(err=>{
+    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`, "landscape", 2, "print").catch(err=>{
       console.error(err);
       alert("สร้าง PDF ไม่สำเร็จ: " + (err && err.message ? err.message : err));
     });
   }
 }
-document.getElementById("mapOnlyPrintBtn").addEventListener("click", ()=>withBusyLabel(document.getElementById("mapOnlyPrintBtn"), exportMapAndTablesToPDF("save")));
+document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>withBusyLabel(document.getElementById("mapOnlyPrintBtn2"), exportMapAndTablesToPDF("print")));
 
 // Computes + draws the leader lines for the print-only layout built above.
 // Routed as tidy orthogonal ("elbow") connectors: each line leaves its own
