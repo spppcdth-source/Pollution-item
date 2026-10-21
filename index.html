@@ -3720,6 +3720,7 @@ function withBusyLabel(btn, promise){
 // captures as a blank page — which is exactly what happened the first
 // time around. Being on-screen for the ~1-2 seconds a save takes is a
 // reasonable trade for actually getting content in the file.
+console.info('PDF preview build v8');
 function saveElementAsPDF(el, filename, orientation, scale){
   orientation = orientation || "landscape";
   scale = scale || 2;
@@ -3755,28 +3756,26 @@ function saveElementAsPDF(el, filename, orientation, scale){
   const waitForPaint = ()=> new Promise(resolve=>{
     requestAnimationFrame(()=> requestAnimationFrame(resolve));
   });
-  return waitForPaint().then(()=> new Promise((resolve, reject)=>{
-    let cv = null;
-    // ONE sequential chain. (Calling toCanvas() and toPdf() separately on the
-    // same worker started two renders at once, which could clash.)
-    html2pdf().set({
+  return waitForPaint().then(()=>{
+    // Same step-by-step chain as the dashboard export (known to work).
+    const worker = html2pdf().set({
       margin:[6,8,6,8],
       filename: filename,
       image:{ type:"jpeg", quality:0.98 },
       html2canvas:{ scale:scale, useCORS:true, backgroundColor:"#ffffff" },
       jsPDF:{ unit:"mm", format:"a4", orientation: orientation },
       pagebreak:{ mode:["css","legacy"] }
-    }).from(el)
-      .toCanvas()
-      .get("canvas", c=>{ cv = c; })
-      .toPdf()
-      .get("pdf", pdf=>{ resolve({ pdf: pdf, canvas: cv }); })
-      .catch(reject);
-  }))
+    }).from(el);
+    let canvas = null, pdf = null;
+    return worker.toCanvas().get("canvas").then(c=>{ canvas = c; })
+      .then(()=> worker.toImg().toPdf().get("pdf").then(p=>{ pdf = p; }))
+      .then(()=>({ pdf: pdf, canvas: canvas }));
+  })
   .then(res=>{
     cleanup();
     let img = null;
     try{ img = res.canvas ? res.canvas.toDataURL("image/jpeg", 0.9) : null; }catch(e){ img = null; }
+    // Nothing is downloaded here: the preview window's button does the saving.
     showPdfBlobPreview(res.pdf, filename, img);
   }, err=>{ cleanup(); throw err; });
 }
