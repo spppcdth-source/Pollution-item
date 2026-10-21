@@ -4161,8 +4161,24 @@ function exportDashboardToPDF(){
   // click feels instant; the picture is dropped in as soon as it is rendered.
   const ctl = {};
   showDashboardPdfPreview(null, null, filename, ctl);
+  holder.id = 'pdfDashHolder';
 
-  return twoFrames().then(()=> Promise.race([fontsReady, new Promise(r=>setTimeout(r,1200))])).then(()=>{
+  // html2canvas clones the WHOLE page (sidebar, map, every chart...) into a hidden
+  // iframe before drawing; stripping everything except our holder from that clone
+  // is the biggest single speed-up.
+  const slim = clonedDoc=>{
+    try{
+      const keep = clonedDoc.getElementById('pdfDashHolder');
+      Array.from(clonedDoc.body.children).forEach(c=>{ if(c !== keep) c.remove(); });
+      clonedDoc.querySelectorAll('script').forEach(n=>n.remove());
+    }catch(e){}
+  };
+  const draw = (sc, Wf, H)=> html2canvas(wrap, {
+    scale: sc, useCORS: true, backgroundColor: bg, logging: false, imageTimeout: 3000,
+    width: Wf, height: H, windowWidth: Wf, windowHeight: H, onclone: slim
+  });
+
+  return twoFrames().then(()=> Promise.race([fontsReady, new Promise(r=>setTimeout(r,300))])).then(()=>{
     const RATIO = 210 / 297;
     let Wf = 1360;
     const Hn = wrap.offsetHeight;
@@ -4174,31 +4190,42 @@ function exportDashboardToPDF(){
     const Hf = Math.floor(Wf * RATIO) - 3;
     wrap.style.minHeight = Hf + 'px';
     const H = Math.max(Hf, wrap.offsetHeight);
-    // ~2000px wide bitmap (about 170 dpi on A4) keeps rendering fast.
-    const sc = Math.max(0.6, Math.min(1.6, 2000 / Wf, Math.sqrt(6e6 / (Wf * H))));
-    return html2canvas(wrap, {
-      scale: sc, useCORS: true, backgroundColor: bg, logging: false, imageTimeout: 4000,
-      width: Wf, height: H, windowWidth: Wf, windowHeight: H
-    }).then(canvas=>{
-      cleanup();
-      // The slow jsPDF/JPEG step is deferred until the person presses "download";
-      // the preview only needs one quick JPEG of the canvas.
-      const lazyPdf = { save: ()=>{
+    // Stage 1: a LOW-res render (about 1/3 of the pixels) just for the preview.
+    const scLow  = Math.max(0.5, Math.min(1, 1300 / Wf, Math.sqrt(2.2e6 / (Wf * H))));
+    // Stage 2: the sharper render used for the real PDF, done in the background.
+    const scHigh = Math.max(0.6, Math.min(1.6, 2000 / Wf, Math.sqrt(6e6 / (Wf * H))));
+    let lowCanvas = null;
+    let hiPromise = null;
+    const startHi = ()=>{
+      if(hiPromise) return hiPromise;
+      hiPromise = new Promise(res=>{
+        setTimeout(()=>{
+          draw(scHigh, Wf, H).then(c=>res(c), ()=>res(null));
+        }, 0);
+      }).then(c=>{ cleanup(); return c || lowCanvas; });
+      return hiPromise;
+    };
+    const lazyPdf = { save: ()=>{
+      startHi().then(canvas=>
         html2pdf().set({
           margin: 0, filename: filename,
           image: { type: 'jpeg', quality: 0.9 },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
         }).from(canvas, 'canvas').toImg().toPdf().save()
-          .catch(e=>{ console.error(e); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); });
-      }};
+      ).catch(e=>{ console.error(e); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); });
+    }};
+    return draw(scLow, Wf, H).then(canvas=>{
+      lowCanvas = canvas;
       return new Promise(res=>{
         canvas.toBlob(b=>{
           ctl.setImage(b ? URL.createObjectURL(b) : canvas.toDataURL('image/jpeg', 0.8), lazyPdf);
           res();
+          // warm up the sharp render while the person looks at the preview
+          setTimeout(startHi, 600);
         }, 'image/jpeg', 0.8);
       });
     });
-  }).then(cleanup, err=>{ cleanup(); if(ctl.close) ctl.close(); throw err; });
+  }).catch(err=>{ cleanup(); if(ctl.close) ctl.close(); throw err; });
 }
 (function(){
   const btn = document.getElementById('dashPdfBtn');
@@ -8271,4 +8298,3 @@ init();
 </script>
 </body>
 </html>
-       
