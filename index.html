@@ -3717,7 +3717,7 @@ function withBusyLabel(btn, promise){
 // captures as a blank page — which is exactly what happened the first
 // time around. Being on-screen for the ~1-2 seconds a save takes is a
 // reasonable trade for actually getting content in the file.
-console.info('PDF preview build v12');
+console.info('PDF preview build v13');
 function saveElementAsPDF(el, filename, orientation, scale, uiMode){
   orientation = orientation || "landscape";
   scale = scale || 2;
@@ -4428,19 +4428,11 @@ function exportMapAndTablesToPDF(mode){
   printArea.style.cssText = prevCssText;
   printArea.style.setProperty('--pdf-scale', String(scale));
 
-  if(mode === "save"){
-    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`, "landscape", 2, "print").catch(err=>{
-      console.error(err);
-      alert("สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
-    });
-  } else {
-    return saveElementAsPDF(printArea, `แผนที่เครื่องมือ.pdf`, "landscape", 2, "print").catch(err=>{
-      console.error(err);
-      alert("สร้าง PDF ไม่สำเร็จ: " + (err && err.message ? err.message : err));
-    });
-  }
+  // Open the browser's own print window (it shows its own preview) -- no custom
+  // preview window or cover screen.
+  window.print();
 }
-document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>withBusyLabel(document.getElementById("mapOnlyPrintBtn2"), exportMapAndTablesToPDF("print")));
+document.getElementById("mapOnlyPrintBtn2").addEventListener("click", ()=>exportMapAndTablesToPDF("print"));
 
 // Computes + draws the leader lines for the print-only layout built above.
 // Routed as tidy orthogonal ("elbow") connectors: each line leaves its own
