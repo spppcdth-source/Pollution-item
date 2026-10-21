@@ -5832,8 +5832,8 @@ function renderKPIs(filtered, total){
   const broken = filtered.filter(r=>r.use==='ชำรุด').length;
   document.getElementById('kpiOk').textContent = fmt(ok);
   document.getElementById('kpiBroken').textContent = fmt(broken);
-  document.getElementById('kpiOkPct').textContent = filtered.length ? (ok/filtered.length*100).toFixed(1)+'%' : '0%';
-  document.getElementById('kpiBrokenPct').textContent = filtered.length ? (broken/filtered.length*100).toFixed(1)+'%' : '0%';
+  document.getElementById('kpiOkPct').textContent = filtered.length ? (ok/filtered.length*100).toFixed(2)+'%' : '0.00%';
+  document.getElementById('kpiBrokenPct').textContent = filtered.length ? (broken/filtered.length*100).toFixed(2)+'%' : '0.00%';
 }
 
 /* ======================= SVG CHART PRIMITIVES ======================= */
