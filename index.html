@@ -2076,6 +2076,7 @@
        which always requires the person to manually choose "Save as PDF" and
        click Save themselves. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <!-- ============ Passcode Gate ============
        ระบบนี้เป็นการกันหน้าเว็บด้วยรหัสผ่านเดียวที่ใช้ร่วมกัน (client-side)
@@ -3949,7 +3950,7 @@ function exportDashboardToPDF(){
   // hiding styles because html2pdf clones it (inline styles included).
   const holder = document.createElement('div');
   holder.setAttribute('aria-hidden','true');
-  holder.style.cssText = 'position:fixed;left:-20000px;top:0;width:1360px;pointer-events:none;';
+  holder.style.cssText = 'position:fixed;left:0;top:0;width:1360px;z-index:-1;pointer-events:none;';
   holder.appendChild(wrap);
   document.body.appendChild(holder);
   const cleanup = ()=> holder.remove();
@@ -3978,37 +3979,21 @@ function exportDashboardToPDF(){
     // 3px below one full page, so rounding can never spill onto a 2nd page
     const Hf = Math.floor(Wf * RATIO) - 3;
     wrap.style.minHeight = Hf + 'px';
-    const opt = {
-      margin: 0,
-      filename: filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      // html2pdf puts the clone inside its own container that is only as wide
-      // as an A4 page (~1123px). Our content is Wf px wide, so that container
-      // clipped the left/right edges. onclone widens it to the real width.
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: bg,
-                     width: Wf, height: Math.max(Hf, wrap.offsetHeight),
-                     windowWidth: Wf, scrollX: 0, scrollY: 0, x: 0, y: 0,
-                     onclone: (doc)=>{
-                       doc.querySelectorAll('.html2pdf__container').forEach(c=>{
-                         c.style.width = Wf + 'px';
-                         c.style.maxWidth = 'none';
-                         c.style.left = '0'; c.style.right = 'auto';
-                         c.style.margin = '0';
-                         c.style.overflow = 'visible';
-                       });
-                     } },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-      pagebreak: { mode: ['css'] }
-    };
-    const worker = html2pdf().set(opt).from(wrap);
-    let canvas, pdf;
-    return worker.toCanvas().get('canvas').then(c=>{ canvas = c; })
-      .then(()=> worker.toImg().toPdf().get('pdf').then(p=>{ pdf = p; }))
-      .then(()=>{
-        cleanup();
-        // Show a preview first; the real download only happens on confirm.
+    // Render the element ourselves with html2canvas (no html2pdf clone/container,
+    // which was the thing clipping the edges), then hand the canvas to jsPDF.
+    const H = Math.max(Hf, wrap.offsetHeight);
+    return html2canvas(wrap, {
+      scale: 2, useCORS: true, backgroundColor: bg,
+      width: Wf, height: H, windowWidth: Wf, windowHeight: H
+    }).then(canvas=>{
+      cleanup();
+      return html2pdf().set({
+        margin: 0, filename: filename,
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      }).from(canvas, 'canvas').toImg().toPdf().get('pdf').then(pdf=>{
         showDashboardPdfPreview(canvas.toDataURL('image/jpeg', 0.92), pdf, filename);
       });
+    });
   }).then(cleanup, err=>{ cleanup(); throw err; });
 }
 (function(){
