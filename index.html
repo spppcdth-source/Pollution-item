@@ -1845,16 +1845,19 @@
     /* Header — normal flow, printed once at the very top of page 1 only. */
     #printArea .print-header{
       display:flex;
+      flex-wrap:wrap;
       align-items:center;
       justify-content:space-between;
-      gap:14px;
+      gap:3px 14px;
       padding:8px 14px;
       margin-bottom:8px;
       background:var(--map-teal);
       border-radius:6px;
     }
-    #printArea .print-header h1{font-size:calc(14px * var(--text-scale, 1)); margin:0; color:#fff; font-weight:700;}
-    #printArea .print-header .print-date{font-size:calc(10px * var(--text-scale, 1)); color:#C9D0FA; white-space:nowrap;}
+    #printArea .print-header h1{font-size:calc(14px * var(--text-scale, 1)); margin:0; color:#fff; font-weight:700; white-space:nowrap; flex:0 1 auto; min-width:0;}
+    #printArea .print-header .print-date{font-size:calc(10px * var(--text-scale, 1)); color:#C9D0FA; white-space:nowrap; flex:0 0 auto;}
+    #printArea .print-header .print-tools{flex:0 0 100%; font-size:calc(9px * var(--text-scale, 1)); line-height:1.35; color:#E4E8FF; white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; border-top:1px solid rgba(255,255,255,.25); padding-top:3px;}
+    #printArea .print-header .print-tools b{color:#fff;}
 
     /* Map + region summary sit side-by-side in ONE compact row at the top
        of page 1, kept small on purpose so the first table can start right
@@ -4424,7 +4427,8 @@ function exportMapAndTablesCore(mode, ctl, fname){
   printArea.innerHTML = `
     <div class="print-header">
       <h1>แผนที่เครื่องมือ — หน่วยงานในสังกัดกรมควบคุมมลพิษ</h1>
-      <div class="print-date">พิมพ์เมื่อวันที่ ${dateStr}${tableFilterItems.length ? " · เครื่องมือที่เลือก: " + tableFilterItems.join(", ") : ""}</div>
+      <div class="print-date">พิมพ์เมื่อวันที่ ${dateStr}</div>
+      ${tableFilterItems.length ? `<div class="print-tools"><b>เครื่องมือที่เลือก:</b> ${tableFilterItems.join(" · ")}</div>` : ""}
     </div>
     <div class="print-body">
       <div class="print-map-flex" id="printMapFlex">
@@ -4485,6 +4489,14 @@ function exportMapAndTablesCore(mode, ctl, fname){
   // cards, see the CSS above) until it truly fits the printable page
   // height. This guarantees one page no matter how many หน่วยงาน or
   // เครื่องมือ are shown, instead of relying on fixed thresholds.
+  // Measure with the REAL print stylesheet switched on (it is normally only active
+  // inside @media print), otherwise the header/title are measured with default
+  // styles, come out far taller than on the page, and the auto-fit shrinks
+  // everything too small. Done synchronously, so it is never painted.
+  const _fitStyle = document.createElement('style');
+  _fitStyle.textContent = getForcedPrintCSS();
+  document.head.appendChild(_fitStyle);
+  document.documentElement.classList.add('pdf-force-print');
   const header = printArea.querySelector('.print-header');
   const prevHeaderDisplay = header ? header.style.display : '';
   if(header) header.style.display = 'flex'; // header is display:none outside @media print; force it visible just for this measurement
@@ -4506,7 +4518,7 @@ function exportMapAndTablesCore(mode, ctl, fname){
   const MAX_SCALE = 2.2;
   let scale = 1;
   let prevH = null;
-  for(let i=0; i<20; i++){
+  for(let i=0; i<30; i++){
     printArea.style.setProperty('--pdf-scale', String(scale));
     const h = measuredHeightPx();
     if(h <= availablePx || scale <= MIN_SCALE) break;
@@ -4519,7 +4531,7 @@ function exportMapAndTablesCore(mode, ctl, fname){
     // print output unnecessarily tiny whenever few (or just one) tools
     // were selected, since the small amount of card content was never the
     // real bottleneck to begin with.
-    if(prevH !== null && (prevH - h) < prevH * 0.02) break;
+    if(prevH !== null && (prevH - h) < prevH * 0.002) break;
     prevH = h;
     // Shrink proportionally to how far over the page height we are, with a
     // small safety margin so it converges instead of hovering just over
@@ -4534,9 +4546,13 @@ function exportMapAndTablesCore(mode, ctl, fname){
   // but multiply the scale UP toward the same target ratio, capped at
   // MAX_SCALE so text doesn't blow up absurdly large for a single card.
   prevH = null;
+  let lastGoodScale = scale;
   for(let i=0; i<20; i++){
     printArea.style.setProperty('--pdf-scale', String(scale));
     const h = measuredHeightPx();
+    // Never keep a scale that overshoots the page: fall back to the last one that fitted.
+    if(h > availablePx){ scale = lastGoodScale; printArea.style.setProperty('--pdf-scale', String(scale)); break; }
+    lastGoodScale = scale;
     if(h >= availablePx * 0.97 || scale >= MAX_SCALE) break;
     // Same bail-out idea as the shrink loop: if growing the scale barely
     // grew the measured height, something other than the card content
@@ -4565,6 +4581,8 @@ function exportMapAndTablesCore(mode, ctl, fname){
   if(header) header.style.display = prevHeaderDisplay;
 
   drawPrintLeaders();
+  document.documentElement.classList.remove('pdf-force-print');
+  _fitStyle.remove();
   // IMPORTANT: cssText replaces the ENTIRE inline style attribute, which
   // would silently throw away the --pdf-scale value the loop above just
   // computed (reverting to the CSS default of 1 and undoing every bit of
