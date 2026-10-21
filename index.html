@@ -212,6 +212,24 @@
   .theme-toggle:hover{border-color:var(--teal);color:var(--teal-dark);}
   .theme-toggle .icon{font-size:calc(14px * var(--text-scale, 1));}
 
+  /* ===== Dashboard PDF export button (top-right corner of the header) ===== */
+  .dash-pdf-btn{
+    display:flex;align-items:center;gap:8px;
+    background:#E5484D;border:1px solid #E5484D;
+    color:#fff;border-radius:20px;font-weight:600;
+    padding:7px 16px;font-family:'Sarabun',sans-serif;font-size:calc(12.5px * var(--text-scale, 1));
+    cursor:pointer;transition:.15s;white-space:nowrap;
+  }
+  .dash-pdf-btn:hover{background:#CF3A3F;border-color:#CF3A3F;}
+  .dash-pdf-btn:disabled{opacity:.7;cursor:wait;}
+  .dash-pdf-btn .icon{font-size:calc(14px * var(--text-scale, 1));}
+  /* Static stand-in for the Top-N dropdowns inside the exported PDF */
+  .dash-pdf-chip{
+    display:inline-block;padding:5px 12px;border-radius:8px;
+    background:var(--surface-soft);border:1px solid var(--line);
+    color:var(--ink-soft);font-size:calc(11.5px * var(--text-scale, 1));
+  }
+
   /* ===== Font-size toggle button =====
      Lets the user bump up just the TEXT size before taking a screenshot,
      since the dashboard is dense and text reads small once captured/
@@ -309,8 +327,9 @@
   [data-mobile="on"] .asof{display:none;}
   [data-mobile="on"] .theme-toggle .label,
   [data-mobile="on"] .mobile-toggle .label,
+  [data-mobile="on"] .dash-pdf-btn .label,
   [data-mobile="on"] .fontsize-toggle .label{display:none;}
-  [data-mobile="on"] .theme-toggle, [data-mobile="on"] .mobile-toggle, [data-mobile="on"] .fontsize-toggle{
+  [data-mobile="on"] .theme-toggle, [data-mobile="on"] .mobile-toggle, [data-mobile="on"] .fontsize-toggle, [data-mobile="on"] .dash-pdf-btn{
     padding:8px;border-radius:10px;flex-shrink:0;
   }
   /* The right-side button group itself must not shrink or wrap either. */
@@ -2333,6 +2352,9 @@
           <span class="icon" id="fontSizeIcon">ก+</span><span class="label" id="fontSizeLabel">ขยายตัวอักษร</span>
         </button>
         <div class="asof" id="asOf">ข้อมูล ณ วันที่ —</div>
+        <button class="dash-pdf-btn" id="dashPdfBtn" type="button" title="ส่งออกหน้าแดชบอร์ด (การ์ดสรุป + กราฟ ก่อนถึงแผนที่) เป็นไฟล์ PDF">
+          <span class="icon">📄</span><span class="label">ส่งออก PDF</span>
+        </button>
       </div>
     </div>
 
@@ -3742,6 +3764,179 @@ function saveElementAsPDF(el, filename, orientation, scale){
   }).from(el).save())
   .then(cleanup, err=>{ cleanup(); throw err; });
 }
+
+/* =========================================================
+   9a-0b. Export the DASHBOARD OVERVIEW page to PDF
+   ---------------------------------------------------------
+   Exports exactly what is above the map: the header bar, the four KPI
+   cards and the three overview charts. The left-hand filter sidebar,
+   the dropdowns / expand buttons and everything from the map downwards
+   are left out. The page is built as a CLONE of the live DOM (so the
+   numbers/charts always match what is on screen for the current
+   filters), rendered at a fixed desktop width, and saved as ONE page:
+   A4 landscape when the content fits, or a taller single page when a
+   long Top-N list makes it taller than A4.
+   ========================================================= */
+function buildDashboardPdfArea(){
+  const topbar = document.querySelector('main.main > .topbar');
+  const kpiRow = document.querySelector('#dashboardContent > .kpi-row');
+  const grid   = document.querySelector('#dashboardContent > .grid-overview-3');
+  if(!topbar || !kpiRow || !grid) return null;
+
+  const mobileOn = document.documentElement.getAttribute('data-mobile') === 'on';
+  const force = (root, sel, styles)=>{
+    root.querySelectorAll(sel).forEach(n=>{
+      for(const k in styles) n.style.setProperty(k, styles[k], 'important');
+    });
+  };
+
+  // outer = full-page background (its width/height are set at export time so
+  // the page always has an exact A4-landscape ratio); inner = the content
+  // itself, always laid out at a fixed desktop width and centred.
+  const wrap = document.createElement('div');
+  wrap.className = 'dash-pdf-area';
+  wrap.style.cssText =
+    "box-sizing:border-box;width:1360px;padding:20px 0 22px;" +
+    "background:var(--body-grad);background-color:var(--bg);" +
+    "font-family:'Sarabun',sans-serif;color:var(--ink);";
+  const inner = document.createElement('div');
+  inner.className = 'dash-pdf-inner';
+  inner.style.cssText = "box-sizing:border-box;width:1316px;margin:0 auto;";
+  wrap.appendChild(inner);
+
+  // No animations/transitions in the cloned copy, so the capture never
+  // catches a bar or counter half-way.
+  const st = document.createElement('style');
+  st.textContent = ".dash-pdf-area *{animation:none !important;transition:none !important;}";
+  wrap.appendChild(st);
+
+  // --- header bar: keep logo + title + "ข้อมูล ณ วันที่", drop all buttons ---
+  const tb = topbar.cloneNode(true);
+  tb.querySelectorAll('button').forEach(b=>b.remove());
+  tb.style.setProperty('position','static','important');
+  tb.style.setProperty('transform','none','important');
+  if(mobileOn){
+    // mobile mode shrinks the header; the PDF always uses the desktop look
+    tb.style.setProperty('padding','16px 22px','important');
+    tb.style.setProperty('border-radius','16px','important');
+    tb.style.setProperty('margin-bottom','16px','important');
+    tb.style.setProperty('flex-wrap','wrap','important');
+    force(tb, '.sub',          {display:'block'});
+    force(tb, '.asof',         {display:'block'});
+    force(tb, '.topbar-badge', {width:'84px', height:'84px', 'border-radius':'14px'});
+    force(tb, 'h1',            {display:'block', overflow:'visible', 'font-size':'calc(19px * var(--text-scale, 1))'});
+  }
+  inner.appendChild(tb);
+
+  // --- KPI cards ---
+  const kpi = kpiRow.cloneNode(true);
+  kpi.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
+  kpi.style.setProperty('gap','16px','important');
+  kpi.style.setProperty('margin-bottom','20px','important');
+  if(mobileOn){
+    force(kpi, '.kpi',         {padding:'16px 18px'});
+    force(kpi, '.kpi .value',  {'font-size':'calc(28px * var(--text-scale, 1))'});
+    force(kpi, '.kpi .k-icon', {width:'34px', height:'34px', top:'14px', right:'16px', 'font-size':'calc(16px * var(--text-scale, 1))'});
+  }
+  inner.appendChild(kpi);
+
+  // --- the three overview charts ---
+  const srcSelects = grid.querySelectorAll('select');
+  const g = grid.cloneNode(true);
+  g.style.setProperty('grid-template-columns','0.85fr 1.05fr 1.05fr','important');
+  g.style.setProperty('gap','18px','important');
+  g.style.setProperty('margin-bottom','0','important');
+  // Top-N dropdowns -> plain text label ("Top 10"), so the PDF still says
+  // how many rows are shown but contains no controls.
+  g.querySelectorAll('select').forEach((sel, i)=>{
+    const o = srcSelects[i];
+    const txt = (o && o.selectedIndex >= 0 && o.options[o.selectedIndex]) ? o.options[o.selectedIndex].text : '';
+    const chip = document.createElement('span');
+    chip.className = 'dash-pdf-chip';
+    chip.textContent = txt;
+    sel.replaceWith(chip);
+  });
+  g.querySelectorAll('.expand-btn, button, input').forEach(n=>n.remove());
+  g.querySelectorAll('.panel.expanded').forEach(p=>p.classList.remove('expanded'));
+  if(mobileOn){
+    force(g, '.panel', {padding:'18px 18px 14px', 'border-radius':'14px'});
+  }
+  inner.appendChild(g);
+  return wrap;
+}
+
+function exportDashboardToPDF(){
+  if(typeof html2pdf === 'undefined'){
+    return Promise.reject(new Error('html2pdf library not loaded'));
+  }
+  const content = document.getElementById('dashboardContent');
+  if(!content || getComputedStyle(content).display === 'none'){
+    return Promise.reject(new Error('NO_DATA'));
+  }
+  const wrap = buildDashboardPdfArea();
+  if(!wrap) return Promise.reject(new Error('dashboard markup not found'));
+
+  // The holder keeps the source off-screen; the *wrap* itself carries no
+  // hiding styles because html2pdf clones it (inline styles included).
+  const holder = document.createElement('div');
+  holder.setAttribute('aria-hidden','true');
+  holder.style.cssText = 'position:fixed;left:-20000px;top:0;width:1360px;pointer-events:none;';
+  holder.appendChild(wrap);
+  document.body.appendChild(holder);
+  const cleanup = ()=> holder.remove();
+
+  const pad = n => String(n).padStart(2,'0');
+  const d = new Date();
+  const filename = `แดชบอร์ดเครื่องมือตรวจวัดมลพิษ-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}.pdf`;
+  const bg = (getComputedStyle(document.documentElement).getPropertyValue('--bg') || '#EAEEFC').trim() || '#EAEEFC';
+
+  const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  const twoFrames = ()=> new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
+
+  return fontsReady.then(twoFrames).then(()=>{
+    // Page = A4 landscape (297 x 210 mm). Measure the content at 1360px wide;
+    // if it is taller than one A4 page at that width, make the page WIDER
+    // (extra background on the sides) so everything still fits on ONE page
+    // instead of splitting a chart across two.
+    const RATIO = 210 / 297;
+    let Wf = 1360;
+    const Hn = wrap.offsetHeight;                 // natural height at 1360px
+    if(Hn + 3 > Wf * RATIO){
+      Wf = Math.ceil((Hn + 3) / RATIO);
+      wrap.style.width = Wf + 'px';
+      holder.style.width = Wf + 'px';
+    }
+    // 3px below one full page, so rounding can never spill onto a 2nd page
+    const Hf = Math.floor(Wf * RATIO) - 3;
+    wrap.style.minHeight = Hf + 'px';
+    return html2pdf().set({
+      margin: 0,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      // html2pdf sizes its own off-screen container from the page size, so
+      // the real capture size is pinned here instead.
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: bg,
+                     width: Wf, height: Math.max(Hf, wrap.offsetHeight),
+                     windowWidth: Wf, scrollX: 0, scrollY: 0 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      pagebreak: { mode: ['css'] }
+    }).from(wrap).save();
+  }).then(cleanup, err=>{ cleanup(); throw err; });
+}
+(function(){
+  const btn = document.getElementById('dashPdfBtn');
+  if(!btn) return;
+  btn.addEventListener('click', ()=>{
+    withBusyLabel(btn, exportDashboardToPDF()).catch(err=>{
+      console.error(err);
+      if(err && err.message === 'NO_DATA'){
+        alert('ยังไม่มีข้อมูลให้ส่งออก กรุณารอให้ข้อมูลโหลดเสร็จก่อน');
+      } else {
+        alert('สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      }
+    });
+  });
+})();
 
 // Drives the browser's own print pipeline instead of html2canvas/html2pdf.js
 // (see the notes above saveElementAsPDF for why: html2canvas silently
