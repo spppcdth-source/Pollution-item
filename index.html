@@ -4560,16 +4560,56 @@ function exportMapAndTablesCore(mode, ctl, fname){
   printArea.style.setProperty('--pdf-scale', String(scale));
 
   if(mode === "save"){
-    // Render a COPY of #printArea inside html2canvas' hidden clone (print layout is
-    // switched on only in that clone), so the live page is never touched and no
-    // cover screen is needed. The new preview window is already open.
+    // ===== Fast + sharp preview (v15) =====
+    // The old flow rasterised #printArea with html2canvas (scale 2) BEFORE the
+    // preview could appear, then squeezed it into a JPEG - that is why the
+    // dialog sat on "กำลังสร้างตัวอย่าง..." for many seconds and the picture was
+    // soft. Now (same idea the dashboard PDF already uses):
+    //   1) the preview is the real page layout shown LIVE inside an <iframe>
+    //      (vector text/lines, perfectly sharp, appears almost instantly);
+    //   2) the heavy bitmap for the actual PDF is rendered from that very same
+    //      iframe, at a higher scale (up to 3x), in the background right after
+    //      the preview is on screen, so "ดาวน์โหลด PDF" is usually instant.
     const forcedCSS = getForcedPrintCSS();
-    const pageWpx = Math.round(PRINT_PAGE_WIDTH_MM * 96 / 25.4);
-    const winW = Math.ceil(297 * 96 / 25.4), winH = Math.ceil(210 * 96 / 25.4);
-    const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
-    return Promise.race([fontsReady, new Promise(r=>setTimeout(r,500))]).then(()=> html2canvas(printArea, {
+    const pageWpx = Math.round(297 * 96 / 25.4);   // A4 landscape @96dpi = 1123
+    const pageHpx = Math.round(210 * 96 / 25.4);   // 794
+    const escAttr = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+    const areaHTML = printArea.outerHTML;           // keeps inline --pdf-scale + drawn leader lines
+    const headBits = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
+      .filter(n => n.id !== "dashPdfPreviewStyle" && n.id !== "dppExtraStyle")
+      .map(n => n.outerHTML).join("\n");
+    const htmlAttrs = Array.from(document.documentElement.attributes)
+      .filter(a => a.name !== "class").map(a => `${a.name}="${escAttr(a.value)}"`).join(" ");
+    const htmlClass = (document.documentElement.className + " pdf-force-print").trim();
+    const srcdoc = `<!DOCTYPE html><html ${htmlAttrs} class="${escAttr(htmlClass)}"><head><meta charset="utf-8">${headBits}<style>${forcedCSS}
+html.pdf-force-print{margin:0 !important;padding:0 !important;width:${pageWpx}px !important;height:${pageHpx}px !important;overflow:hidden !important;background:#fff !important;}
+html.pdf-force-print body{margin:0 !important;padding:6mm 8mm !important;width:${pageWpx}px !important;height:${pageHpx}px !important;min-height:0 !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;display:block !important;position:static !important;}
+html.pdf-force-print body > #printArea{width:${PRINT_PAGE_WIDTH_MM}mm !important;max-width:none !important;}
+html.pdf-force-print body > iframe.html2canvas-container{display:block !important;}
+</style></head><body class="${escAttr(document.body.className)}">${areaHTML}</body></html>`;
+
+    let closed = false, hiPromise = null;
+    const fr = document.createElement("iframe");
+    fr.title = "PDF preview";
+    fr.setAttribute("scrolling", "no");
+    fr.style.cssText = `border:0;display:block;background:#fff;height:${pageHpx}px;opacity:0;`;
+    // "ready" = iframe loaded + its fonts settled (capped) -> only then reveal it.
+    const ready = new Promise(res=>{
+      let done = false;
+      const fin = ()=>{ if(done) return; done = true; fr.style.opacity = "1"; res(); };
+      fr.addEventListener("load", ()=>{
+        let fp = Promise.resolve();
+        try{ const d = fr.contentDocument; if(d && d.fonts && d.fonts.ready) fp = d.fonts.ready; }catch(e){}
+        Promise.race([fp, new Promise(r=>setTimeout(r, 1200))]).then(fin);
+      }, {once:true});
+      setTimeout(fin, 4000); // never leave the preview invisible
+    });
+    fr.srcdoc = srcdoc;
+
+    // Old main-document capture, kept ONLY as a safety net if the iframe capture fails.
+    const legacyCapture = ()=> html2canvas(printArea, {
       scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false, imageTimeout: 4000,
-      windowWidth: winW, windowHeight: winH, scrollX: 0, scrollY: 0,
+      windowWidth: Math.ceil(297 * 96 / 25.4), windowHeight: Math.ceil(210 * 96 / 25.4), scrollX: 0, scrollY: 0,
       onclone: doc=>{
         try{
           const pa = doc.getElementById("printArea");
@@ -4583,21 +4623,39 @@ function exportMapAndTablesCore(mode, ctl, fname){
           pa.style.maxWidth = "none";
         }catch(e){ console.error(e); }
       }
-    })).then(canvas=>{
-      const lazyPdf = { save: ()=> html2pdf().set({
+    });
+    const renderHi = ()=>{
+      if(hiPromise) return hiPromise;
+      hiPromise = ready.then(()=> new Promise(r=> setTimeout(r, 0))).then(()=>{
+        if(typeof html2canvas === "undefined") throw new Error("html2canvas not loaded");
+        const pa = fr.contentDocument && fr.contentDocument.getElementById("printArea");
+        if(!pa) throw new Error("preview frame missing");
+        const w = pa.offsetWidth, h = pa.offsetHeight;
+        // up to 3x for a crisp page, capped at ~16 megapixels so it stays fast & safe
+        const sc = Math.max(1, Math.min(3, Math.sqrt(16e6 / Math.max(1, w * h))));
+        return html2canvas(pa, {
+          scale: sc, useCORS: true, backgroundColor: "#ffffff", logging: false, imageTimeout: 4000,
+          windowWidth: pageWpx, windowHeight: pageHpx, scrollX: 0, scrollY: 0
+        }).then(c=>{ if(!c || c.width < 10 || c.height < 10) throw new Error("empty capture"); return c; })
+          .catch(err=>{ console.warn("iframe capture failed, using fallback", err); return legacyCapture(); });
+      });
+      hiPromise.catch(()=>{ hiPromise = null; });
+      return hiPromise;
+    };
+    const lazyPdf = { save: ()=> renderHi().then(canvas=>
+        html2pdf().set({
           margin:[6,8,6,8], filename: fname,
-          image:{ type:"jpeg", quality:0.95 },
+          image:{ type:"jpeg", quality:0.98 },
           jsPDF:{ unit:"mm", format:"a4", orientation:"landscape", compress:true }
         }).from(canvas, "canvas").toImg().toPdf().save()
-          .catch(e=>{ console.error(e); alert("บันทึก PDF ไม่สำเร็จ"); })
-      };
-      return new Promise(res=>{
-        canvas.toBlob(blob=>{
-          ctl.setImage(blob ? URL.createObjectURL(blob) : canvas.toDataURL("image/jpeg", 0.9), lazyPdf);
-          res();
-        }, "image/jpeg", 0.92);
-      });
-    });
+      ).catch(e=>{ console.error(e); alert("บันทึก PDF ไม่สำเร็จ"); })
+    };
+
+    ctl.onClose = ()=>{ closed = true; };
+    ctl.setNode(fr, pageWpx, pageHpx, lazyPdf);     // preview shows up right now
+    // Start the sharp bitmap shortly after the preview is visible.
+    ready.then(()=> setTimeout(()=>{ if(!closed) renderHi().catch(()=>{}); }, 600));
+    return ready;
   }
   // Open the browser's own print window (it shows its own preview) -- no custom
   // preview window or cover screen.
