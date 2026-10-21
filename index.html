@@ -3741,7 +3741,13 @@ function withBusyLabel(btn, promise){
   btn.disabled = true;
   btn.innerHTML = "⏳ กำลังสร้างไฟล์ PDF...";
   const restore = ()=>{ btn.innerHTML = prevHTML; btn.disabled = prevDisabled; };
-  return promise.then(restore, err=>{ restore(); throw err; });
+  // Safety net: if a render ever hangs (slow CDN image, huge canvas...), give the
+  // button back and show an error after 90s instead of staying stuck forever.
+  let timer;
+  const guard = new Promise((_, reject)=>{ timer = setTimeout(()=> reject(new Error('PDF_TIMEOUT')), 90000); });
+  return Promise.race([promise, guard]).then(
+    v=>{ clearTimeout(timer); restore(); return v; },
+    err=>{ clearTimeout(timer); restore(); throw err; });
 }
 
 // Renders `el` (normally #printArea, already filled in and moved to <body>
@@ -3799,8 +3805,11 @@ function saveElementAsPDF(el, filename, orientation, scale, uiMode){
   const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
   let canvas = null;
   return fontsReady.then(waitForPaint).then(()=>{
+    // cap total bitmap size so long multi-page reports can't blow past canvas limits
+    const _w = Math.max(el.scrollWidth, el.offsetWidth), _h = Math.max(el.scrollHeight, el.offsetHeight);
+    const _sc = Math.max(0.75, Math.min(scale, Math.sqrt(16e6 / Math.max(1, _w * _h))));
     return html2canvas(el, {
-      scale: scale, useCORS: true, backgroundColor: "#ffffff",
+      scale: _sc, useCORS: true, backgroundColor: "#ffffff", logging: false, imageTimeout: 8000,
       scrollX: 0, scrollY: 0,
       windowWidth: Math.max(el.scrollWidth, el.offsetWidth),
       ignoreElements: n => n.id === "pdfBusyCover"
@@ -4147,16 +4156,28 @@ function exportDashboardToPDF(){
     // Render the element ourselves with html2canvas (no html2pdf clone/container,
     // which was the thing clipping the edges), then hand the canvas to jsPDF.
     const H = Math.max(Hf, wrap.offsetHeight);
+    // Adaptive resolution: keep the bitmap near ~2600px wide no matter how wide
+    // the page had to grow for a long Top-N list. A fixed scale:2 on a very wide /
+    // tall page made a gigantic canvas (slow, and could blank out or crash the tab).
+    const sc = Math.max(0.75, Math.min(2, 2600 / Wf, Math.sqrt(9e6 / (Wf * H))));
     return html2canvas(wrap, {
-      scale: 2, useCORS: true, backgroundColor: bg,
+      scale: sc, useCORS: true, backgroundColor: bg, logging: false, imageTimeout: 8000,
       width: Wf, height: H, windowWidth: Wf, windowHeight: H
     }).then(canvas=>{
       cleanup();
       return html2pdf().set({
         margin: 0, filename: filename,
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        image: { type: 'jpeg', quality: 0.9 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
       }).from(canvas, 'canvas').toImg().toPdf().get('pdf').then(pdf=>{
-        showDashboardPdfPreview(canvas.toDataURL('image/jpeg', 0.92), pdf, filename);
+        // Preview image via toBlob (async, no giant base64 string) instead of toDataURL.
+        return new Promise(res=>{
+          canvas.toBlob(b=>{
+            const url = b ? URL.createObjectURL(b) : canvas.toDataURL('image/jpeg', 0.85);
+            showDashboardPdfPreview(url, pdf, filename);
+            res();
+          }, 'image/jpeg', 0.85);
+        });
       });
     });
   }).then(cleanup, err=>{ cleanup(); throw err; });
@@ -4169,6 +4190,8 @@ function exportDashboardToPDF(){
       console.error(err);
       if(err && err.message === 'NO_DATA'){
         alert('ยังไม่มีข้อมูลให้ส่งออก กรุณารอให้ข้อมูลโหลดเสร็จก่อน');
+      } else if(err && err.message === 'PDF_TIMEOUT'){
+        alert('สร้างไฟล์ PDF ใช้เวลานานเกินไป กรุณาลองกรองข้อมูลให้น้อยลงแล้วลองใหม่');
       } else {
         alert('สร้างไฟล์ PDF ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       }
