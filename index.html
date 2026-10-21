@@ -3757,16 +3757,21 @@ function saveElementAsPDF(el, filename, orientation, scale){
   });
   return waitForPaint().then(()=> new Promise((resolve, reject)=>{
     let cv = null;
-    const w = html2pdf().set({
+    // ONE sequential chain. (Calling toCanvas() and toPdf() separately on the
+    // same worker started two renders at once, which could clash.)
+    html2pdf().set({
       margin:[6,8,6,8],
       filename: filename,
       image:{ type:"jpeg", quality:0.98 },
       html2canvas:{ scale:scale, useCORS:true, backgroundColor:"#ffffff" },
       jsPDF:{ unit:"mm", format:"a4", orientation: orientation },
       pagebreak:{ mode:["css","legacy"] }
-    }).from(el);
-    w.toCanvas().get("canvas").then(c=>{ cv = c; }, reject);
-    w.toPdf().get("pdf").then(pdf=>{ resolve({ pdf: pdf, canvas: cv }); }, reject);
+    }).from(el)
+      .toCanvas()
+      .get("canvas", c=>{ cv = c; })
+      .toPdf()
+      .get("pdf", pdf=>{ resolve({ pdf: pdf, canvas: cv }); })
+      .catch(reject);
   }))
   .then(res=>{
     cleanup();
@@ -3915,7 +3920,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
   ov.setAttribute('role','dialog');
   ov.setAttribute('aria-modal','true');
   ov.innerHTML = `
-    <div class="dpp-box dpp-tall">
+    <div class="dpp-box">
       <div class="dpp-head">
         <div class="dpp-title">\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF<small></small></div>
         <button type="button" class="dpp-btn" data-act="close" aria-label="\u0e1b\u0e34\u0e14">\u2715</button>
@@ -3925,7 +3930,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
         <span class="dpp-hint">\u0e04\u0e25\u0e34\u0e01\u0e17\u0e35\u0e48\u0e23\u0e39\u0e1b\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e0b\u0e39\u0e21\u0e40\u0e02\u0e49\u0e32/\u0e2d\u0e2d\u0e01</span>
         <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
         <button type="button" class="dpp-btn" data-act="print">\ud83d\udda8 \u0e1e\u0e34\u0e21\u0e1e\u0e4c</button>
-        <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF</button>
+        <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
       </div>
     </div>`;
   ov.querySelector('small').textContent = filename;
@@ -3938,6 +3943,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl){
     body.appendChild(img);
   } else {
     body.classList.add('dpp-frame');
+    ov.querySelector('.dpp-box').classList.add('dpp-tall');
     const fr = document.createElement('iframe');
     fr.src = url + '#view=FitH';
     body.appendChild(fr);
