@@ -4037,7 +4037,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
     if(!act) return;
     const what = act.dataset.act;
     if(what === 'save'){
-      try{ pdfRef.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+      try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
       return close();
     }
     if(what === 'print'){
@@ -4108,8 +4108,9 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
         const w = body.querySelector('.dpp-wait'); if(w) w.remove();
         const stage = document.createElement('div');
         stage.className = 'dpp-live';
-        stage.style.cssText = 'position:relative;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden;cursor:zoom-in;text-align:left;';
-        node.style.cssText += ';position:absolute;left:0;top:0;margin:0;transform-origin:0 0;pointer-events:none;';
+        stage.style.cssText = 'position:relative;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden;cursor:zoom-in;text-align:left;contain:layout paint;transform:translateZ(0);';
+        body.style.overscrollBehavior = 'contain';
+        node.style.cssText += ';position:absolute;left:0;top:0;margin:0;transform-origin:0 0;pointer-events:none;will-change:transform;backface-visibility:hidden;contain:layout paint;';
         node.style.width = W + 'px';
         stage.appendChild(node);
         const fit = ()=> Math.min(1, Math.max(120, body.clientWidth - 32) / W);
@@ -4135,6 +4136,7 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
     document.body.style.overflow = 'hidden';
     const close = ()=>{
       document.removeEventListener('keydown', onKey, true);
+      if(ctl && ctl.onClose){ try{ ctl.onClose(); }catch(e){} }
       document.body.style.overflow = prevOverflow;
       ov.remove();
       resolve();
@@ -4147,7 +4149,14 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
       if(!act) return;
       if(act.dataset.act === 'save' && !pdfRef) return;
       if(act.dataset.act === 'save'){
-        try{ pdf.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+        let r;
+        try{ r = pdfRef.save(filename); }catch(err){ console.error(err); alert('\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 PDF \u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+        if(r && r.then){
+          saveBtnEl.disabled = true;
+          saveBtnEl.textContent = '\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e44\u0e1f\u0e25\u0e4c PDF...';
+          r.then(close, close);
+          return;
+        }
       }
       close();
     });
@@ -4226,7 +4235,7 @@ function exportDashboardToPDF(){
       return hiPromise;
     };
     const lazyPdf = { save: ()=>{
-      startHi().then(canvas=>
+      return startHi().then(canvas=>
         html2pdf().set({
           margin: 0, filename: filename,
           image: { type: 'jpeg', quality: 0.95 },
@@ -4237,9 +4246,9 @@ function exportDashboardToPDF(){
     // Preview = a scaled live copy of the same page (instant, vector-sharp).
     const previewNode = wrap.cloneNode(true);
     ctl.setNode(previewNode, Wf, H, lazyPdf);
-    // Let the dialog paint first, then render the sharp bitmap in the background
-    // so it is (usually) ready by the time "download" is pressed.
-    setTimeout(startHi, 500);
+    // No background rendering: the sharp bitmap is only built when "download" is
+    // pressed, so scrolling the preview is never competing with a heavy render.
+    ctl.onClose = cleanup;
   }).catch(err=>{ cleanup(); if(ctl.close) ctl.close(); throw err; });
 }
 (function(){
