@@ -589,6 +589,19 @@
   .brand-text .t2{font-size:calc(11px * var(--text-scale, 1));color:rgba(255,255,255,0.85);}
 
   .side-section{display:flex;flex-direction:column;gap:10px;}
+
+  /* ===== ปุ่มเล็กสำหรับแสดง/ซ่อน นำเข้าข้อมูล & เชื่อมต่อข้อมูล ===== */
+  .side-toggles{display:flex;gap:8px;align-items:center;}
+  .side-toggle-btn{
+    width:30px;height:30px;border-radius:9px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    font-size:calc(14px * var(--text-scale, 1));line-height:1;padding:0;
+    border:1px solid var(--soft-border);background:var(--soft-tint);color:inherit;
+    transition:.15s;
+  }
+  .side-toggle-btn:hover{border-color:var(--ok);background:var(--soft-tint-strong);}
+  .side-toggle-btn.active{border-color:var(--ok);background:var(--soft-tint-strong);box-shadow:0 0 0 2px rgba(0,0,0,0.06);}
+  .side-section.is-collapsed{display:none;}
   .side-label{
     font-size:calc(11px * var(--text-scale, 1));font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     color:var(--sidebar-muted);
@@ -2243,7 +2256,12 @@
       </div>
     </div>
 
-    <div class="side-section">
+    <div class="side-toggles">
+      <button type="button" class="side-toggle-btn" id="toggleImportBtn" data-target="importSection" title="แสดง/ซ่อน นำเข้าข้อมูล" aria-expanded="false">📥</button>
+      <button type="button" class="side-toggle-btn" id="toggleConnectBtn" data-target="connectSection" title="แสดง/ซ่อน เชื่อมต่อข้อมูล" aria-expanded="false">🔗</button>
+    </div>
+
+    <div class="side-section is-collapsed" id="importSection">
       <div class="side-label">📥 นำเข้าข้อมูล</div>
       <div class="upload-box" id="uploadBox">
         <div class="ic">📄</div>
@@ -2259,7 +2277,7 @@
       <div class="file-error" id="fileError"></div>
     </div>
 
-    <div class="side-section">
+    <div class="side-section is-collapsed" id="connectSection">
       <div class="side-label">🔗 เชื่อมต่อข้อมูล</div>
       <div class="sheet-status" id="sheetStatus">
         <div class="sheet-status-row">
@@ -8156,5 +8174,22 @@ function init(){
 init();
 </script>
 <div class="expand-overlay" id="expandOverlay" onclick="collapseExpandedPanel()"></div>
+<script>
+(function(){
+  function setup(){
+    document.querySelectorAll('.side-toggle-btn').forEach(function(btn){
+      if(btn.dataset.bound) return; btn.dataset.bound='1';
+      btn.addEventListener('click',function(){
+        var sec=document.getElementById(btn.dataset.target); if(!sec) return;
+        var hide=!sec.classList.contains('is-collapsed');
+        sec.classList.toggle('is-collapsed',hide);
+        btn.classList.toggle('active',!hide);
+        btn.setAttribute('aria-expanded',String(!hide));
+      });
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',setup); else setup();
+})();
+</script>
 </body>
 </html>
