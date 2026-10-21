@@ -3942,7 +3942,7 @@ function ensureDppStyle(){
       .dpp-title{font-weight:700;font-size:16px;flex:1;min-width:0;}
       .dpp-title small{display:block;font-weight:400;font-size:12px;color:#6b72a8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .dpp-body{flex:1;overflow:auto;background:#d9dcef;padding:16px;text-align:center;}
-      .dpp-body img{display:inline-block;max-width:100%;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.25);background:#fff;cursor:zoom-in;}
+      .dpp-body img{display:inline-block;max-width:100%;height:auto;box-shadow:0 4px 18px rgba(0,0,0,.25);background:#fff;}
       .dpp-body.zoomed img{max-width:none;width:1600px;cursor:zoom-out;}
       .dpp-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid #e3e6f6;flex-wrap:wrap;}
       .dpp-hint{margin-right:auto;font-size:12px;color:#6b72a8;}
@@ -3977,7 +3977,7 @@ function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
       </div>
       <div class="dpp-body"></div>
       <div class="dpp-foot">
-        <span class="dpp-hint">\u0e04\u0e25\u0e34\u0e01\u0e17\u0e35\u0e48\u0e23\u0e39\u0e1b\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e0b\u0e39\u0e21\u0e40\u0e02\u0e49\u0e32/\u0e2d\u0e2d\u0e01</span>
+        <span class="dpp-hint"></span>
         <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
         <button type="button" class="dpp-btn" data-act="print">\ud83d\udda8 \u0e1e\u0e34\u0e21\u0e1e\u0e4c</button>
         <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
@@ -4001,7 +4001,6 @@ function showPdfBlobPreview(pdf, filename, imgUrl, uiMode){
   const showImage = (src)=>{
     const img = document.createElement('img');
     img.alt = '\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF';
-    img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
     img.addEventListener('error', showFrame);
     img.src = src;
     body.appendChild(img);
@@ -4076,7 +4075,7 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
         </div>
         <div class="dpp-body"><img alt="\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 PDF"></div>
         <div class="dpp-foot">
-          <span class="dpp-hint">\u0e04\u0e25\u0e34\u0e01\u0e17\u0e35\u0e48\u0e23\u0e39\u0e1b\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e0b\u0e39\u0e21\u0e40\u0e02\u0e49\u0e32/\u0e2d\u0e2d\u0e01</span>
+          <span class="dpp-hint"></span>
           <button type="button" class="dpp-btn" data-act="cancel">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>
           <button type="button" class="dpp-btn primary" data-act="save">\u2b07 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14 PDF</button>
         </div>
@@ -4108,7 +4107,7 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
         const w = body.querySelector('.dpp-wait'); if(w) w.remove();
         const stage = document.createElement('div');
         stage.className = 'dpp-live';
-        stage.style.cssText = 'position:relative;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden;cursor:zoom-in;text-align:left;contain:layout paint;transform:translateZ(0);';
+        stage.style.cssText = 'position:relative;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden;cursor:default;text-align:left;contain:layout paint;transform:translateZ(0);';
         body.style.overscrollBehavior = 'contain';
         node.style.cssText += ';position:absolute;left:0;top:0;margin:0;transform-origin:0 0;pointer-events:none;will-change:transform;backface-visibility:hidden;contain:layout paint;';
         node.style.width = W + 'px';
@@ -4120,10 +4119,8 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
           node.style.transform = 'scale(' + k + ')';
           stage.style.width = Math.round(W * k) + 'px';
           stage.style.height = Math.round(H * k) + 'px';
-          stage.style.cursor = zoomed ? 'zoom-out' : 'zoom-in';
-          body.style.textAlign = zoomed && W * k > body.clientWidth ? 'left' : 'center';
+                    body.style.textAlign = zoomed && W * k > body.clientWidth ? 'left' : 'center';
         };
-        stage.addEventListener('click', ()=>{ zoomed = !zoomed; apply(); });
         body.appendChild(stage);
         apply();
         body.classList.remove('dpp-loading');
@@ -4131,7 +4128,6 @@ function showDashboardPdfPreview(imgUrl, pdf, filename, ctl){
       };
       ctl.close = ()=>{ if(ov.parentNode) ov.querySelector('[data-act="cancel"]').click(); };
     }
-    img.addEventListener('click', ()=> body.classList.toggle('zoomed'));
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const close = ()=>{
