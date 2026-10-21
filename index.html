@@ -3720,25 +3720,28 @@ function withBusyLabel(btn, promise){
 // captures as a blank page — which is exactly what happened the first
 // time around. Being on-screen for the ~1-2 seconds a save takes is a
 // reasonable trade for actually getting content in the file.
-console.info('PDF preview build v9');
+console.info('PDF preview build v10');
 function saveElementAsPDF(el, filename, orientation, scale){
   orientation = orientation || "landscape";
   scale = scale || 2;
+  if(typeof html2canvas === "undefined" || typeof html2pdf === "undefined"){
+    return Promise.reject(new Error("html2canvas/html2pdf library not loaded"));
+  }
+  // 1) Show the print layout (same rules the real @media print uses) so it can
+  //    be drawn, but hide it from the person behind a cover. html2canvas draws
+  //    the element DIRECTLY (html2pdf's own clone/overlay was being hidden by the
+  //    "hide everything except #printArea" rule, which is why PDFs came out blank).
   const styleTag = document.createElement("style");
   styleTag.textContent = getForcedPrintCSS();
   document.head.appendChild(styleTag);
   document.documentElement.classList.add("pdf-force-print");
   const prevWidth = el.style.width;
   const prevMaxWidth = el.style.maxWidth;
-  // Pin the width to the same A4 content box the print stylesheet targets,
-  // so text wraps/paginates the same way a real print job would (on
-  // screen, with nothing hidden, #printArea would otherwise just take the
-  // full browser window's width instead).
   const pageWidthMM = (orientation === "landscape" ? 297 : 210) - 8*2;
   el.style.width = pageWidthMM + "mm";
   el.style.maxWidth = "none";
-  // The forced-print state briefly shows the print layout full-screen. Cover
-  // it so the person only ever sees a "preparing" box, then the preview window.
+  const prevScrollY = window.scrollY, prevScrollX = window.scrollX;
+  window.scrollTo(0, 0);
   const cover = document.createElement("div");
   cover.id = "pdfBusyCover";
   cover.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483000;align-items:center;justify-content:center;background:rgba(15,20,50,.72);color:#fff;font:700 18px 'Sarabun',sans-serif;";
@@ -3751,39 +3754,34 @@ function saveElementAsPDF(el, filename, orientation, scale){
     styleTag.remove();
     el.style.width = prevWidth;
     el.style.maxWidth = prevMaxWidth;
+    window.scrollTo(prevScrollX, prevScrollY);
   };
-  // Wait for two real paint frames before handing the element to
-  // html2canvas. Reading el.scrollWidth/scrollHeight (the old approach)
-  // forces a synchronous *layout* pass, but layout isn't the same as
-  // *paint* -- capturing before the forced-print styles have actually
-  // painted is a known way for html2canvas to silently return a blank
-  // canvas with no error thrown. Also no longer pinning html2canvas's
-  // windowWidth/windowHeight to that scrollWidth/scrollHeight reading:
-  // if it read back as 0 for any reason, that handed html2canvas a
-  // zero-size viewport -- a guaranteed blank capture -- so this now lets
-  // html2canvas size itself from the element's real rendered box instead.
   const waitForPaint = ()=> new Promise(resolve=>{
-    requestAnimationFrame(()=> requestAnimationFrame(resolve));
+    requestAnimationFrame(()=> requestAnimationFrame(()=> setTimeout(resolve, 60)));
   });
-  return waitForPaint().then(()=>{
-    // Same step-by-step chain as the dashboard export (known to work).
-    const worker = html2pdf().set({
-      margin:[6,8,6,8],
-      filename: filename,
-      image:{ type:"jpeg", quality:0.98 },
-      html2canvas:{ scale:scale, useCORS:true, backgroundColor:"#ffffff" },
-      jsPDF:{ unit:"mm", format:"a4", orientation: orientation },
-      pagebreak:{ mode:["css","legacy"] }
-    }).from(el);
-    let canvas = null, pdf = null;
-    return worker.toCanvas().get("canvas").then(c=>{ canvas = c; })
-      .then(()=> worker.toImg().toPdf().get("pdf").then(p=>{ pdf = p; }))
-      .then(()=>({ pdf: pdf, canvas: canvas }));
-  })
-  .then(res=>{
+  const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  let canvas = null;
+  return fontsReady.then(waitForPaint).then(()=>{
+    return html2canvas(el, {
+      scale: scale, useCORS: true, backgroundColor: "#ffffff",
+      scrollX: 0, scrollY: 0,
+      windowWidth: Math.max(el.scrollWidth, el.offsetWidth),
+      ignoreElements: n => n.id === "pdfBusyCover"
+    });
+  }).then(c=>{
+    canvas = c;
+    // 2) canvas -> PDF pages (same step that works for the dashboard export)
+    return new Promise((resolve, reject)=>{
+      html2pdf().set({
+        margin:[6,8,6,8], filename: filename,
+        image:{ type:"jpeg", quality:0.98 },
+        jsPDF:{ unit:"mm", format:"a4", orientation: orientation }
+      }).from(canvas, "canvas").toImg().toPdf().get("pdf").then(pdf=>{ resolve(pdf); }, reject);
+    });
+  }).then(pdf=>{
     cleanup();
     // Nothing is downloaded here: the preview window's button does the saving.
-    showPdfBlobPreview(res.pdf, filename, res.canvas);
+    showPdfBlobPreview(pdf, filename, canvas);
   }, err=>{ cleanup(); throw err; });
 }
 
